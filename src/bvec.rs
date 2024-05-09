@@ -1,14 +1,19 @@
+use std::mem::size_of;
+
+type BitCell = u128;
+const BIT_CELL_SIZE: usize = size_of::<BitCell>();
+
 pub struct BitVector {
-    bits: Vec<u128>,
+    bits: Vec<BitCell>,
     size: usize,
 }
 
 impl BitVector {
     pub fn new(bits: Vec<bool>) -> Self {
-        let mut v = vec![0; (bits.len() + 127) / 128];
+        let mut v = vec![0; (bits.len() + BIT_CELL_SIZE -1 ) / BIT_CELL_SIZE];
         for i in 0..bits.len() {
             if bits[i] {
-                v[i / 128] |= 1u128 << (i % 128);
+                v[i / BIT_CELL_SIZE] |= (1 as BitCell) << (i % BIT_CELL_SIZE);
             }
         }
         BitVector {
@@ -26,9 +31,23 @@ impl BitVector {
     }
 
     // Get the i'th element of the bitvector
-    pub fn access(&self, i: usize) -> bool {
+    pub fn get_nth(&self, i: usize) -> u32 {
         assert!(i < self.size);
-        return (self.bits[i / 128] >> (i % 128)) & 1 == 1;
+        return ((self.bits[i / BIT_CELL_SIZE] >> (i % BIT_CELL_SIZE)) & 1) as u32;
+    }
+
+    fn select_x(&self, mut i: usize, x: u32) -> Option<usize> {
+        for j in 0..self.size() {
+            println!("{} {} {} {}", i, x, j, self.get_nth(j));
+            if self.get_nth(j) == x {
+                i -= 1;
+                if i == 0 {
+                    return Some(j);
+                }
+            }
+        }
+
+        None
     }
 }
 
@@ -36,19 +55,17 @@ impl BitVector {
 mod tests {
     use super::*;
     use crate::tst;
-    use seeded_random::{Random, Seed};
 
     #[test]
     fn test() {
-        let mut rng = Random::from_seed(Seed::unsafe_new(0));
-        let str = tst::generate_random_bits_string(3*128 + 15, &mut rng);
+        let str = tst::generate_random_bits_string(3*128 + 15, 0);
 
         let bv = BitVector::new_from_string(str.as_str());
         println!("{}", str);
         assert_eq!(bv.size(), str.len());
 
         for i in 0..str.len() {
-            assert_eq!(bv.access(i), str.chars().nth(i).unwrap() == '1');
+            assert_eq!(bv.get_nth(i), str.chars().nth(i).unwrap() as u32 - '0' as u32);
         }
     }
 }
@@ -57,10 +74,16 @@ pub trait RankSelectVector {
     fn new(bits: BitVector) -> Self;
 
     // Get the position of the i'th 1 in the bit vector
-    fn select(&self, i: usize) -> Option<usize>;
+    fn select1(&self, i: usize) -> Option<usize>;
+
+    // Get the position of the i'th 0 in the bit vector
+    fn select0(&self, i: usize) -> Option<usize>;
 
     // Return the number of 1s in the bit vector on positions [0, ... i).
     fn rank(&self, i: usize) -> usize;
+
+    // Return the value of the ith bit
+    fn access(&self, i: usize) -> u32;
 }
 
 impl RankSelectVector for BitVector {
@@ -68,26 +91,36 @@ impl RankSelectVector for BitVector {
         bits
     }
 
-    fn select(&self, mut i: usize) -> Option<usize> {
-        for j in 0..self.bits.len() {
-            if self.access(j) {
-                if i == 0 {
-                    return Some(j);
-                }
-                i -= 1;
-            }
-        }
+    fn select1(&self, i: usize) -> Option<usize> {
+        self.select_x(i, 1)
+    }
 
-        None
+    fn select0(&self, i: usize) -> Option<usize> {
+        self.select_x(i, 0)
     }
 
     fn rank(&self, i: usize) -> usize {
         let mut count = 0;
         for j in 0..i {
-            if self.access(j) {
+            if self.get_nth(j) == 1 {
                 count += 1;
             }
         }
         count
+    }
+
+    fn access(&self, i: usize) -> u32 {
+        self.get_nth(i)
+    }
+}
+
+#[cfg(test)]
+mod rank_select_naive_test {
+    use super::*;
+    use crate::tst;
+
+    #[test]
+    fn test() {
+        tst::test_sample::<BitVector>();
     }
 }

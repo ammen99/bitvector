@@ -37,7 +37,7 @@ pub fn generate_random_queries(nr_queries: usize, seed: u64, n: usize) -> Vec<Qu
     }).collect()
 }
 
-trait ExecQueries {
+pub trait ExecQueries {
     fn exec_queries<'a>(self, b: &'a impl bvec::RankSelectVector) -> impl Iterator<Item = usize> + 'a where Self: 'a;
 }
 

@@ -37,8 +37,11 @@ impl BitVector {
     }
 
     fn select_x(&self, mut i: usize, x: u32) -> Option<usize> {
+        if i == 0 {
+            return None;
+        }
+
         for j in 0..self.size() {
-            println!("{} {} {} {}", i, x, j, self.get_nth(j));
             if self.get_nth(j) == x {
                 i -= 1;
                 if i == 0 {
@@ -61,7 +64,6 @@ mod tests {
         let str = tst::generate_random_bits_string(3*128 + 15, 0);
 
         let bv = BitVector::new_from_string(str.as_str());
-        println!("{}", str);
         assert_eq!(bv.size(), str.len());
 
         for i in 0..str.len() {

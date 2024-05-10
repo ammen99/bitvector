@@ -1,5 +1,4 @@
 use crate::bvec;
-use crate::bvec::RankSelectVector;
 use seeded_random::{Random, Seed};
 
 pub fn generate_random_bits_string(length: usize, seed: u64) -> String {
@@ -38,18 +37,30 @@ pub fn generate_random_queries(nr_queries: usize, seed: u64, n: usize) -> Vec<Qu
     }).collect()
 }
 
-pub fn check_answers(b: &impl bvec::RankSelectVector, qs: &Vec<Query>, answers: &Vec<usize>) {
-    for (idx, q) in qs.iter().enumerate() {
-        let val = match q {
-            Query::Access(i) => b.access(*i) as usize,
-            Query::Select1(i) => b.select1(*i).unwrap_or(usize::MAX),
-            Query::Select0(i) => b.select0(*i).unwrap_or(usize::MAX),
-            Query::Rank1(i) => b.rank(*i),
-            Query::Rank0(i) => *i - b.rank(*i),
-        };
+trait ExecQueries {
+    fn exec_queries<'a>(self, b: &'a impl bvec::RankSelectVector) -> impl Iterator<Item = usize> + 'a where Self: 'a;
+}
 
+impl<'b, I: Iterator<Item = &'b Query>> ExecQueries for I {
+    fn exec_queries<'a>(self, b: &'a impl bvec::RankSelectVector) -> impl Iterator<Item = usize> + 'a where I: 'a {
+        self.map(|q| {
+            match q {
+                Query::Access(i) => b.access(*i) as usize,
+                Query::Select1(i) => b.select1(*i).unwrap_or(usize::MAX),
+                Query::Select0(i) => b.select0(*i).unwrap_or(usize::MAX),
+                Query::Rank1(i) => b.rank(*i),
+                Query::Rank0(i) => i - b.rank(*i),
+            }
+        })
+    }
+}
+
+pub fn check_answers(b: &impl bvec::RankSelectVector, qs: &Vec<Query>, answers: &Vec<usize>) {
+    let vals = qs.iter().exec_queries(b).collect::<Vec<_>>();
+    assert_eq!(vals.len(), answers.len());
+    for (idx, val) in vals.iter().enumerate() {
         let a = answers[idx];
-        assert!(val == a, "expected {a}, got {val} for idx={idx} q={:?}", q);
+        assert!(*val == a, "expected {a}, got {val} for idx={idx} q={:?}", qs[idx]);
     }
 }
 

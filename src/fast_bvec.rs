@@ -2,10 +2,19 @@ use num::Integer;
 
 use crate::bvec::*;
 
+struct RankSupport {
+    blocks: Vec<u16>,
+    superb: Vec<usize>,
+}
+
+struct SelectSupport {
+}
+
 pub struct FastRASBVec<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> {
     bits: BitVector,
-    rank_blocks: Vec<u16>,
-    rank_superb: Vec<usize>,
+    rank: RankSupport,
+    select0: SelectSupport,
+    select1: SelectSupport,
 }
 
 #[allow(dead_code)]
@@ -15,17 +24,15 @@ impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> FastRASBVec<BLOCK_SI
     }
 
     pub fn debug_print(&self) {
-        println!("Superblocks: {:?}", self.rank_superb);
-        println!("Blocks: {:?}", self.rank_blocks);
+        println!("Superblocks: {:?}", self.rank.superb);
+        println!("Blocks: {:?}", self.rank.blocks);
     }
 
     pub fn blocks_per_superblock() -> usize {
         SUPERBLOCK_SIZE / BLOCK_SIZE
     }
-}
 
-impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> RankSelectVector for FastRASBVec<BLOCK_SIZE, SUPERBLOCK_SIZE> {
-    fn new(bits: BitVector) -> Self {
+    fn init_rank(bits: &BitVector) -> RankSupport {
         let n_blocks = bits.size().div_ceil(BLOCK_SIZE);
         let n_super = bits.size().div_ceil(SUPERBLOCK_SIZE);
 
@@ -54,10 +61,28 @@ impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> RankSelectVector for
             superblocks.push(total_count);
         }
 
+        RankSupport {
+            blocks,
+            superb: superblocks,
+        }
+    }
+
+    fn init_select(bits: &BitVector, value: usize) -> SelectSupport {
+        unimplemented!()
+    }
+}
+
+impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> RankSelectVector for FastRASBVec<BLOCK_SIZE, SUPERBLOCK_SIZE> {
+
+    fn new(bits: BitVector) -> Self {
+        let rank = Self::init_rank(&bits);
+        let select0 = Self::init_select(&bits, 0);
+        let select1 = Self::init_select(&bits, 1);
         FastRASBVec {
             bits,
-            rank_blocks: blocks,
-            rank_superb: superblocks,
+            rank,
+            select0,
+            select1,
         }
     }
 
@@ -77,7 +102,7 @@ impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> RankSelectVector for
 
         let mut r = 0;
         if super_idx > 0 {
-            r += self.rank_superb[super_idx - 1];
+            r += self.rank.superb[super_idx - 1];
             println!("from superblock {}", r);
             if super_rem == 0 {
                 return r;
@@ -85,7 +110,7 @@ impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> RankSelectVector for
         }
 
         if block_idx > super_idx * Self::blocks_per_superblock() {
-            r += self.rank_blocks[block_idx - 1] as usize;
+            r += self.rank.blocks[block_idx - 1] as usize;
             println!("from block {}", r);
         }
 
@@ -116,6 +141,25 @@ mod tests {
         for i in 0..bits.len() {
             println!("{} {}", i, rasb.rank(i));
             assert_eq!(rasb.rank(i), i);
+        }
+    }
+
+    #[test]
+    fn select_simple() {
+        let bits = "1111111111011111111110011111111110";
+        let rasb: FastRASBVec<4, 8> = FastRASBVec::new(BitVector::new_from_string(bits));
+
+        let mut count0 = 0;
+        let mut count1 = 0;
+
+        for i in 0..bits.len() {
+            if rasb.access(i) == 0 {
+                count0 += 1;
+                assert!(rasb.select0(count0) == Some(i), "select0({}) = {:?}", count0, rasb.select0(count0));
+            } else {
+                count1 += 1;
+                assert!(rasb.select1(count1) == Some(i), "select1({}) = {:?}", count1, rasb.select1(count1));
+            }
         }
     }
 

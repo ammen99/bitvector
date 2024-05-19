@@ -7,7 +7,21 @@ struct RankSupport {
     superb: Vec<usize>,
 }
 
+enum SelectSuperBlock {
+    Sparse {
+        answer: Vec<usize>,
+    },
+    Dense {
+
+    },
+    Singularity { // Veeery dense ;)
+
+    }
+}
+
 struct SelectSupport {
+    super_size: usize,
+    per_block: Vec<
 }
 
 pub struct FastRASBVec<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> {

@@ -5,6 +5,4 @@ mod fast_bvec;
 
 fn main() {
     println!("Hello, world!");
-
-
 }

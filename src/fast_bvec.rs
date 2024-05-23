@@ -7,32 +7,22 @@ struct RankSupport {
     superb: Vec<usize>,
 }
 
-enum SelectSuperBlock {
-    Sparse {
-        answer: Vec<usize>,
-    },
-    Dense {
-
-    },
-    Singularity { // Veeery dense ;)
-
-    }
+pub trait RASBVecParameters {
+    const BLOCK_SIZE: usize;
+    const SUPERBLOCK_SIZE: usize;
+    const SELECT_SUPERBLOCK: usize;
 }
 
-struct SelectSupport {
-    super_size: usize,
-    per_block: Vec<
-}
-
-pub struct FastRASBVec<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> {
+pub struct FastRASBVec<Parameters: RASBVecParameters> {
     bits: BitVector,
     rank: RankSupport,
-    select0: SelectSupport,
-    select1: SelectSupport,
+    select0: Vec<usize>,
+    select1: Vec<usize>,
+    pd: std::marker::PhantomData<Parameters>,
 }
 
 #[allow(dead_code)]
-impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> FastRASBVec<BLOCK_SIZE, SUPERBLOCK_SIZE> {
+impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
     pub fn size(&self) -> usize {
         self.bits.size()
     }
@@ -43,12 +33,12 @@ impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> FastRASBVec<BLOCK_SI
     }
 
     pub fn blocks_per_superblock() -> usize {
-        SUPERBLOCK_SIZE / BLOCK_SIZE
+        Parameters::SUPERBLOCK_SIZE / Parameters::BLOCK_SIZE
     }
 
     fn init_rank(bits: &BitVector) -> RankSupport {
-        let n_blocks = bits.size().div_ceil(BLOCK_SIZE);
-        let n_super = bits.size().div_ceil(SUPERBLOCK_SIZE);
+        let n_blocks = bits.size().div_ceil(Parameters::BLOCK_SIZE);
+        let n_super = bits.size().div_ceil(Parameters::SUPERBLOCK_SIZE);
 
         let mut superblocks: Vec<usize> = vec![];
         let mut blocks: Vec<u16> = vec![];
@@ -56,11 +46,11 @@ impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> FastRASBVec<BLOCK_SI
         let mut total_count: usize = 0;
         for i in 0..n_super {
             let mut sblock_count: u16 = 0;
-            assert!(usize::from(u16::MAX) >= SUPERBLOCK_SIZE);
+            assert!(usize::from(u16::MAX) >= Parameters::SUPERBLOCK_SIZE);
 
             for j in 0..Self::blocks_per_superblock() {
-                for k in 0..BLOCK_SIZE {
-                    let bit = i * SUPERBLOCK_SIZE + j * BLOCK_SIZE + k;
+                for k in 0..Parameters::BLOCK_SIZE {
+                    let bit = i * Parameters::SUPERBLOCK_SIZE + j * Parameters::BLOCK_SIZE + k;
                     if bit < bits.size() {
                         sblock_count += bits.access(bit) as u16;
                     }
@@ -81,22 +71,22 @@ impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> FastRASBVec<BLOCK_SI
         }
     }
 
-    fn init_select(bits: &BitVector, value: usize) -> SelectSupport {
+    fn init_select(bits: &BitVector, value: usize) -> Vec<usize> {
         unimplemented!()
     }
 }
 
-impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> RankSelectVector for FastRASBVec<BLOCK_SIZE, SUPERBLOCK_SIZE> {
-
+impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters> {
     fn new(bits: BitVector) -> Self {
         let rank = Self::init_rank(&bits);
         let select0 = Self::init_select(&bits, 0);
         let select1 = Self::init_select(&bits, 1);
-        FastRASBVec {
+        FastRASBVec::<Parameters> {
             bits,
             rank,
             select0,
             select1,
+            pd: std::marker::PhantomData,
         }
     }
 
@@ -109,8 +99,8 @@ impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> RankSelectVector for
     }
 
     fn rank(&self, i: usize) -> usize {
-        let (super_idx, super_rem) = i.div_rem(&SUPERBLOCK_SIZE);
-        let (block_idx, block_rem) = i.div_rem(&BLOCK_SIZE);
+        let (super_idx, super_rem) = i.div_rem(&Parameters::SUPERBLOCK_SIZE);
+        let (block_idx, block_rem) = i.div_rem(&Parameters::BLOCK_SIZE);
 
         println!("super_idx: {}, super_rem: {}, block_idx: {}, block_rem: {}", super_idx, super_rem, block_idx, block_rem);
 
@@ -140,6 +130,21 @@ impl<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize> RankSelectVector for
     }
 }
 
+pub struct SmallRASB;
+
+impl RASBVecParameters for SmallRASB {
+    const BLOCK_SIZE: usize = 4;
+    const SUPERBLOCK_SIZE: usize = 8;
+    const SELECT_SUPERBLOCK: usize = 8;
+}
+
+pub struct BigRASB;
+impl RASBVecParameters for BigRASB {
+    const BLOCK_SIZE: usize = 256;
+    const SUPERBLOCK_SIZE: usize = 1024;
+    const SELECT_SUPERBLOCK: usize = 1024;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,7 +153,7 @@ mod tests {
     #[test]
     fn rank_simple() {
         let bits = "1111111111111111111111";
-        let rasb: FastRASBVec<4, 8> = FastRASBVec::new(BitVector::new_from_string(bits));
+        let rasb = FastRASBVec::<SmallRASB>::new(BitVector::new_from_string(bits));
 
         rasb.debug_print();
 
@@ -161,7 +166,7 @@ mod tests {
     #[test]
     fn select_simple() {
         let bits = "1111111111011111111110011111111110";
-        let rasb: FastRASBVec<4, 8> = FastRASBVec::new(BitVector::new_from_string(bits));
+        let rasb = FastRASBVec::<SmallRASB>::new(BitVector::new_from_string(bits));
 
         let mut count0 = 0;
         let mut count1 = 0;
@@ -177,10 +182,10 @@ mod tests {
         }
     }
 
-    fn test_generic<const BLOCK_SIZE: usize, const SUPERBLOCK_SIZE: usize>(size: usize, nr_queries: usize, seed: u64) {
+    fn test_generic<Parameters: RASBVecParameters>(size: usize, nr_queries: usize, seed: u64) {
         let bits = generate_random_bits_string(size, seed);
         println!("{}", bits);
-        let rasb = FastRASBVec::<BLOCK_SIZE, SUPERBLOCK_SIZE>::new(BitVector::new_from_string(bits.as_str()));
+        let rasb = FastRASBVec::<Parameters>::new(BitVector::new_from_string(bits.as_str()));
         rasb.debug_print();
 
         let slowb = BitVector::new_from_string(bits.as_str());
@@ -200,25 +205,23 @@ mod tests {
 
     #[test]
     fn test_small() {
-        test_generic::<4, 8>(35, 30, 0);
+        test_generic::<SmallRASB>(35, 30, 0);
     }
 
     #[test]
     fn test_big() {
-        const BLOCK_SIZE: usize = 256;
-        const SUPERBLOCK_SIZE: usize = 4096;
-        let n = SUPERBLOCK_SIZE * 4 + 3 * BLOCK_SIZE - 1;
+        let n = BigRASB::SUPERBLOCK_SIZE * 4 + 3 * BigRASB::BLOCK_SIZE - 1;
         let q = n * 2;
-        test_generic::<BLOCK_SIZE, SUPERBLOCK_SIZE>(n, q, 2);
+        test_generic::<BigRASB>(n, q, 2);
     }
 
     #[test]
     fn sample_1() {
-        test_sample::<FastRASBVec<256, 4096>>();
+        test_sample::<FastRASBVec<BigRASB>>();
     }
 
     #[test]
     fn sample_2() {
-        test_sample::<FastRASBVec<4, 8>>();
+        test_sample::<FastRASBVec<SmallRASB>>();
     }
 }

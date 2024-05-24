@@ -1,11 +1,12 @@
 use crate::bvec;
-use seeded_random::{Random, Seed};
+use rand::{Rng, SeedableRng};
+use rand_xoshiro::Xoshiro256Plus;
 
-pub fn generate_random_bits_string(length: usize, seed: u64) -> String {
-    let rng = Random::from_seed(Seed::unsafe_new(seed));
+pub fn generate_random_bits_string(length: usize, seed: u64, weight0: f32) -> String {
+    let mut rng = Xoshiro256Plus::seed_from_u64(seed);
     let mut result = String::with_capacity(length);
     for _ in 0..length {
-        result.push(if rng.gen() { '1' } else {'0'});
+        result.push(if rng.gen_range(0.0..1.0) < weight0 { '0' } else {'1'});
     }
 
     result
@@ -21,10 +22,10 @@ pub enum Query {
 }
 
 pub fn generate_random_queries(nr_queries: usize, seed: u64, n: usize) -> Vec<Query> {
-    let rng = Random::from_seed(Seed::unsafe_new(seed));
+    let mut rng = Xoshiro256Plus::seed_from_u64(seed);
     (0..nr_queries).map(|_| {
-        let qtype = rng.range(0, 5);
-        let pos = rng.range(0, n as u32) as usize;
+        let qtype = rng.gen_range(0..5);
+        let pos = rng.gen_range(0..n as u32) as usize;
 
         match qtype {
             0 => Query::Access(pos),

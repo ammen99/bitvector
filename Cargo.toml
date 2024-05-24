@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-seeded-random = "0.6.0"
 num = "0.4.0"
+rand = "0.8.5"
+rand_xoshiro = "0.6.0"

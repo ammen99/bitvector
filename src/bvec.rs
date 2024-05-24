@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let str = tst::generate_random_bits_string(3*128 + 15, 0);
+        let str = tst::generate_random_bits_string(3*128 + 15, 0, 0.5);
 
         let bv = BitVector::new_from_string(str.as_str());
         assert_eq!(bv.size(), str.len());

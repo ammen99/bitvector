@@ -274,36 +274,35 @@ mod tests {
     }
 
     fn test_generic<Parameters: RASBVecParameters>(size: usize, nr_queries: usize, seed: u64) {
-        let bits = generate_random_bits_string(size, seed);
+        let bits = generate_random_bits_string(size, seed, 0.5);
         println!("{}", bits);
         let rasb = FastRASBVec::<Parameters>::new(BitVector::new_from_string(bits.as_str()));
         rasb.debug_print();
 
         let slowb = BitVector::new_from_string(bits.as_str());
         let queries = generate_random_queries(nr_queries, 1, size);
-        for q in &queries {
-            println!("{:?}", q);
-        }
+        //for q in &queries {
+        //    println!("{:?}", q);
+        //}
 
         let answers_fast = queries.iter().exec_queries(&rasb);
         let answers_slow = queries.iter().exec_queries(&slowb);
 
         for (a, b) in answers_fast.zip(answers_slow) {
-            println!("{} {}", a, b);
-            assert_eq!(a, b);
+            assert_eq!(a, b, "got {}, expected {}", a, b);
         }
     }
 
     #[test]
     fn test_small() {
-        test_generic::<SmallRASB>(35, 30, 0);
+        test_generic::<SmallRASB>(35, 30, 1);
     }
 
     #[test]
     fn test_big() {
         let n = BigRASB::SUPERBLOCK_SIZE * 4 + 3 * BigRASB::BLOCK_SIZE - 1;
         let q = n * 2;
-        test_generic::<BigRASB>(n, q, 2);
+        test_generic::<BigRASB>(n, q, 3);
     }
 
     #[test]

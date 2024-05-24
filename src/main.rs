@@ -3,6 +3,7 @@
 mod bvec;
 mod tst;
 mod fast_bvec;
+mod benchmark;
 
 fn main() {
     println!("Hello, world!");

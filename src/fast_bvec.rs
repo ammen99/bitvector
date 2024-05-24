@@ -7,17 +7,23 @@ struct RankSupport {
     superb: Vec<usize>,
 }
 
+struct SelectSupport {
+    blocks: Vec<usize>,
+    total_count: usize,
+}
+
 pub trait RASBVecParameters {
     const BLOCK_SIZE: usize;
     const SUPERBLOCK_SIZE: usize;
     const SELECT_SUPERBLOCK: usize;
+    const SELECT_BRUTEFORCE: usize = 2;
 }
 
 pub struct FastRASBVec<Parameters: RASBVecParameters> {
     bits: BitVector,
     rank: RankSupport,
-    select0: Vec<usize>,
-    select1: Vec<usize>,
+    select0: SelectSupport,
+    select1: SelectSupport,
     pd: std::marker::PhantomData<Parameters>,
 }
 
@@ -30,6 +36,8 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
     pub fn debug_print(&self) {
         println!("Superblocks: {:?}", self.rank.superb);
         println!("Blocks: {:?}", self.rank.blocks);
+        println!("select0: {:?}", self.select0.blocks);
+        println!("select1: {:?}", self.select1.blocks);
     }
 
     pub fn blocks_per_superblock() -> usize {
@@ -71,8 +79,109 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
         }
     }
 
-    fn init_select(bits: &BitVector, value: usize) -> Vec<usize> {
-        unimplemented!()
+    fn _rank1(&self, i: usize) -> usize {
+        let (super_idx, super_rem) = i.div_rem(&Parameters::SUPERBLOCK_SIZE);
+        let (block_idx, block_rem) = i.div_rem(&Parameters::BLOCK_SIZE);
+
+        //println!("super_idx: {}, super_rem: {}, block_idx: {}, block_rem: {}", super_idx, super_rem, block_idx, block_rem);
+
+        let mut r = 0;
+        if super_idx > 0 {
+            r += self.rank.superb[super_idx - 1];
+            //println!("from superblock {}", r);
+            if super_rem == 0 {
+                return r;
+            }
+        }
+
+        if block_idx > super_idx * Self::blocks_per_superblock() {
+            r += self.rank.blocks[block_idx - 1] as usize;
+            //println!("from block {}", r);
+        }
+
+        for j in 1..=block_rem {
+            r += self.bits.access(i - j) as usize;
+        }
+
+        r
+    }
+
+    fn generic_rank(&self, i: usize, value: u32) -> usize {
+        let r = self._rank1(i);
+        if value == 1 {
+            r
+        } else {
+            i - r
+        }
+    }
+
+    fn init_select(bits: &BitVector, value: u32) -> SelectSupport {
+        let mut sblocks = vec![0];
+        let mut count_in_last_sblock = 0;
+        let mut total_count = 0;
+
+        for i in 0..bits.size() {
+            if bits.access(i) == value {
+                if count_in_last_sblock >= Parameters::SELECT_SUPERBLOCK {
+                    sblocks.push(i);
+                    count_in_last_sblock = 0;
+                }
+
+                count_in_last_sblock += 1;
+                total_count += 1
+            }
+        }
+
+        SelectSupport {
+            blocks: sblocks,
+            total_count,
+        }
+    }
+
+    fn generic_select(&self, i: usize, value: u32) -> Option<usize> {
+        if i == 0 {
+            return None;
+        }
+
+        let accel = if value == 0 { &self.select0 } else { &self.select1 };
+        if i > accel.total_count {
+            return None
+        }
+
+        let block = (i-1).div_floor(Parameters::SELECT_SUPERBLOCK);
+        assert!(block < accel.blocks.len());
+        let mut start = accel.blocks[block];
+        let mut end = if block + 1 < accel.blocks.len() {
+            accel.blocks[block + 1]
+        } else {
+            self.bits.size()
+        };
+
+        while end - start > Parameters::SELECT_BRUTEFORCE {
+            let mid = (start + end) / 2;
+            let rk = self.generic_rank(mid, value);
+            if rk < i {
+                start = mid
+            } else {
+                end = mid
+            }
+        }
+
+        if end - start < 2 {
+            return Some(start)
+        }
+
+        let mut olds = self.generic_rank(start, value);
+        for j in start..end {
+            if self.bits.access(j) == value {
+                olds += 1;
+                if olds == i {
+                    return Some(j)
+                }
+            }
+        }
+
+        panic!("should not happen");
     }
 }
 
@@ -91,38 +200,15 @@ impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters>
     }
 
     fn select1(&self, i: usize) -> Option<usize> {
-        self.bits.select1(i)
+        self.generic_select(i, 1)
     }
 
     fn select0(&self, i: usize) -> Option<usize> {
-        self.bits.select0(i)
+        self.generic_select(i, 0)
     }
 
     fn rank(&self, i: usize) -> usize {
-        let (super_idx, super_rem) = i.div_rem(&Parameters::SUPERBLOCK_SIZE);
-        let (block_idx, block_rem) = i.div_rem(&Parameters::BLOCK_SIZE);
-
-        println!("super_idx: {}, super_rem: {}, block_idx: {}, block_rem: {}", super_idx, super_rem, block_idx, block_rem);
-
-        let mut r = 0;
-        if super_idx > 0 {
-            r += self.rank.superb[super_idx - 1];
-            println!("from superblock {}", r);
-            if super_rem == 0 {
-                return r;
-            }
-        }
-
-        if block_idx > super_idx * Self::blocks_per_superblock() {
-            r += self.rank.blocks[block_idx - 1] as usize;
-            println!("from block {}", r);
-        }
-
-        for j in 1..=block_rem {
-            r += self.bits.access(i - j) as usize;
-        }
-
-        r
+        self.generic_rank(i, 1)
     }
 
     fn access(&self, i: usize) -> u32 {
@@ -166,7 +252,9 @@ mod tests {
     #[test]
     fn select_simple() {
         let bits = "1111111111011111111110011111111110";
+        println!("{}", bits);
         let rasb = FastRASBVec::<SmallRASB>::new(BitVector::new_from_string(bits));
+        rasb.debug_print();
 
         let mut count0 = 0;
         let mut count1 = 0;
@@ -174,10 +262,13 @@ mod tests {
         for i in 0..bits.len() {
             if rasb.access(i) == 0 {
                 count0 += 1;
-                assert!(rasb.select0(count0) == Some(i), "select0({}) = {:?}", count0, rasb.select0(count0));
+
+                let sel = rasb.select0(count0);
+                assert!(sel == Some(i), "select0({}) = {:?} (should be {})", count0, sel, i);
             } else {
                 count1 += 1;
-                assert!(rasb.select1(count1) == Some(i), "select1({}) = {:?}", count1, rasb.select1(count1));
+                let sel = rasb.select1(count1);
+                assert!(sel == Some(i), "select1({}) = {:?} (should be {})", count1, sel, i);
             }
         }
     }

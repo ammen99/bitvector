@@ -108,3 +108,25 @@ pub fn test_sample<T: bvec::RankSelectVector>() {
 
     check_answers(&b, &qs, &vec![1, 4, 20, 6, 5, 0]);
 }
+
+pub fn test_simple_select<T: bvec::RankSelectVector>() {
+    let bits = "1111111111011111111110011111111110";
+    println!("{}", bits);
+    let rasb = T::new(bvec::BitVector::new_from_string(bits));
+
+    let mut count0 = 0;
+    let mut count1 = 0;
+
+    for i in 0..bits.len() {
+        if rasb.access(i) == 0 {
+            count0 += 1;
+
+            let sel = rasb.select0(count0);
+            assert!(sel == Some(i), "select0({}) = {:?} (should be {})", count0, sel, i);
+        } else {
+            count1 += 1;
+            let sel = rasb.select1(count1);
+            assert!(sel == Some(i), "select1({}) = {:?} (should be {})", count1, sel, i);
+        }
+    }
+}

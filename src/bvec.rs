@@ -73,6 +73,7 @@ mod tests {
 }
 
 pub trait RankSelectVector {
+    #[allow(dead_code)]
     fn new(bits: BitVector) -> Self;
 
     // Get the position of the i'th 1 in the bit vector
@@ -124,5 +125,10 @@ mod rank_select_naive_test {
     #[test]
     fn test() {
         tst::test_sample::<BitVector>();
+    }
+
+    #[test]
+    fn select() {
+        tst::test_simple_select::<BitVector>();
     }
 }

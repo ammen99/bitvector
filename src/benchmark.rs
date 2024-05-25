@@ -35,7 +35,7 @@ pub fn benchmark_rank() {
     let mut memory = vec![vec![0u128; M]; N];
     let mut runtimes = vec![vec![0u128; M]; N];
 
-    let string = tst::generate_random_bits_string(1 << 23, 1, 0.5);
+    let string = tst::generate_random_bits_string(1 << 21, 1, 0.5);
 
     seq!(I in 0..5 {
         seq!(J in 0..3 {
@@ -48,11 +48,12 @@ pub fn benchmark_rank() {
                     type AccelVector = FastRASBVec<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 10000000000>>;
                     let mut bv = AccelVector::new_empty();
 
-                    memory[I][J] = bv.dynamic_usage() as u128 + std::mem::size_of::<AccelVector>() as u128;
-
                     build_times[I][J] = measure_time!({
                         bv.initialize_for(bits);
                     });
+
+                    memory[I][J] = bv.dynamic_usage() as u128 + std::mem::size_of::<AccelVector>() as u128;
+
 
                     runtimes[I][J] = measure_time!({
                         for i in 0..string.len() {
@@ -85,8 +86,8 @@ pub fn benchmark_rank() {
         line_run.add_cell(Cell::new(format!("{}", BLOCKS[i]).as_str()));
 
         for j in 0..SUPERBLOCKS.len() {
-            line_run.add_cell(Cell::new(format!("{:.3} ms", runtimes[i][j] as f64 / 1000.0).as_str()));
-            line_build.add_cell(Cell::new(format!("{:.3} ms / {:.2} MB",
+            line_run.add_cell(Cell::new(format!("{:.3} s", runtimes[i][j] as f64 / 1000.0).as_str()));
+            line_build.add_cell(Cell::new(format!("{:.3} s / {:.2} MB",
                                                   build_times[i][j] as f64 / 1000.0,
                                                   memory[i][j] as f64 / 1024.0 / 1024.0).as_str()));
         }

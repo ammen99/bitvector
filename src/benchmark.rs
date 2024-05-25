@@ -3,6 +3,7 @@ use crate::bvec::*;
 use seq_macro::seq;
 use crate::tst;
 use prettytable::*;
+use memuse::DynamicUsage;
 
 struct Params<const A: usize, const B: usize, const C: usize>;
 
@@ -23,27 +24,31 @@ macro_rules! measure_time {
 }
 
 pub fn benchmark_rank() {
-    const BLOCKS: [usize; 6] = [4, 16, 64, 256, 1024, 4096];
-    const SUPERBLOCKS: [usize; 5] = [512, 1024, 4096, 8192, 32768];
+    const BLOCKS: [usize; 5] = [4, 64, 256, 1024, 4096];
+    const SUPERBLOCKS: [usize; 3] = [512, 1024, 4096];
 
     const N: usize = BLOCKS.len();
     const M: usize = SUPERBLOCKS.len();
     const BASE: u128 = 136395369829;
 
     let mut build_times = vec![vec![0u128; M]; N];
+    let mut memory = vec![vec![0u128; M]; N];
     let mut runtimes = vec![vec![0u128; M]; N];
 
     let string = tst::generate_random_bits_string(1 << 23, 1, 0.5);
 
-    seq!(I in 0..6 {
-        seq!(J in 0..5 {
+    seq!(I in 0..5 {
+        seq!(J in 0..3 {
             {
                 const BLOCK_SIZE: usize = BLOCKS[I];
                 const SUPERBLOCK_SIZE: usize = SUPERBLOCKS[J];
 
                 if BLOCK_SIZE <= SUPERBLOCK_SIZE {
                     let bits = BitVector::new_from_string(&string);
-                    let mut bv = FastRASBVec::<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 10000000000>>::new_empty();
+                    type AccelVector = FastRASBVec<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 10000000000>>;
+                    let mut bv = AccelVector::new_empty();
+
+                    memory[I][J] = bv.dynamic_usage() as u128 + std::mem::size_of::<AccelVector>() as u128;
 
                     build_times[I][J] = measure_time!({
                         bv.initialize_for(bits);
@@ -81,7 +86,9 @@ pub fn benchmark_rank() {
 
         for j in 0..SUPERBLOCKS.len() {
             line_run.add_cell(Cell::new(format!("{:.3} ms", runtimes[i][j] as f64 / 1000.0).as_str()));
-            line_build.add_cell(Cell::new(format!("{:.3} ms", build_times[i][j] as f64 / 1000.0).as_str()));
+            line_build.add_cell(Cell::new(format!("{:.3} ms / {:.2} MB",
+                                                  build_times[i][j] as f64 / 1000.0,
+                                                  memory[i][j] as f64 / 1024.0 / 1024.0).as_str()));
         }
 
         table_build.add_row(line_build);

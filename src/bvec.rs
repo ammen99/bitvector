@@ -1,4 +1,5 @@
 use std::mem::size_of;
+use memuse::DynamicUsage;
 
 type BitCell = u128;
 const BIT_CELL_SIZE: usize = size_of::<BitCell>();
@@ -114,6 +115,16 @@ impl RankSelectVector for BitVector {
 
     fn access(&self, i: usize) -> u32 {
         self.get_nth(i)
+    }
+}
+
+impl DynamicUsage for BitVector {
+    fn dynamic_usage(&self) -> usize {
+        self.bits.dynamic_usage()
+    }
+
+    fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) {
+        self.bits.dynamic_usage_bounds()
     }
 }
 

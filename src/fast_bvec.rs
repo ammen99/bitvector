@@ -1,6 +1,7 @@
 use num::Integer;
 
 use crate::bvec::*;
+use memuse::DynamicUsage;
 
 struct RankSupport {
     blocks: Vec<u16>,
@@ -240,6 +241,18 @@ impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters>
 
     fn access(&self, i: usize) -> u32 {
         self.bits.access(i)
+    }
+}
+
+impl<Parameters: RASBVecParameters> DynamicUsage for FastRASBVec<Parameters> {
+    fn dynamic_usage(&self) -> usize {
+        self.bits.dynamic_usage() +
+            self.rank.blocks.dynamic_usage() + self.rank.superb.dynamic_usage() +
+            self.select0.blocks.dynamic_usage() + self.select1.blocks.dynamic_usage()
+    }
+
+    fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) {
+        (self.dynamic_usage(), Some(self.dynamic_usage()))
     }
 }
 

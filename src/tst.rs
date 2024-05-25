@@ -2,14 +2,44 @@ use crate::bvec;
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256Plus;
 
-pub fn generate_random_bits_string(length: usize, seed: u64, weight0: f32) -> String {
+pub struct SectionDescription {
+    pub weight0: f32,
+    pub section_len: usize,
+    pub probability: f32,
+}
+
+pub fn generate_random_bits_in_sections(section_description: &[SectionDescription], nr_sections: usize, seed: u64) -> String {
     let mut rng = Xoshiro256Plus::seed_from_u64(seed);
-    let mut result = String::with_capacity(length);
-    for _ in 0..length {
-        result.push(if rng.gen_range(0.0..1.0) < weight0 { '0' } else {'1'});
+    let mut result = String::new();
+
+    let weight_sum = section_description.iter().map(|s| s.probability).sum::<f32>();
+
+    for _ in 0..nr_sections {
+        let mut choice = rng.gen_range(0.0..weight_sum);
+        let mut section = section_description.last().unwrap();
+        for s in section_description {
+            if choice < s.probability {
+                section = s;
+                break;
+            } else {
+                choice -= s.probability;
+            }
+        }
+
+        for _ in 0..section.section_len {
+            result.push(if rng.gen_range(0.0..1.0) < section.weight0 { '0' } else {'1'});
+        }
     }
 
     result
+}
+
+pub fn generate_random_bits_string(length: usize, seed: u64, weight0: f32) -> String {
+    let desc = [SectionDescription {
+        weight0, section_len: length, probability: 1.0
+    }];
+
+    generate_random_bits_in_sections(&desc, 1, seed)
 }
 
 #[derive(Debug)]

@@ -33,6 +33,32 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
         self.bits.size()
     }
 
+    pub fn new_empty() -> Self {
+        FastRASBVec::<Parameters> {
+            bits: BitVector::new_from_string("0"),
+            rank: RankSupport {
+                blocks: vec![0],
+                superb: vec![0],
+            },
+            select0: SelectSupport {
+                blocks: vec![0],
+                total_count: 0,
+            },
+            select1: SelectSupport {
+                blocks: vec![0],
+                total_count: 0,
+            },
+            pd: std::marker::PhantomData,
+        }
+    }
+
+    pub fn initialize_for(&mut self, bits: BitVector) {
+        self.bits = bits;
+        self.rank = Self::init_rank(&self.bits);
+        self.select0 = Self::init_select(&self.bits, 0);
+        self.select1 = Self::init_select(&self.bits, 1);
+    }
+
     pub fn debug_print(&self) {
         println!("Superblocks: {:?}", self.rank.superb);
         println!("Blocks: {:?}", self.rank.blocks);
@@ -186,6 +212,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
 }
 
 impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters> {
+
     fn new(bits: BitVector) -> Self {
         let rank = Self::init_rank(&bits);
         let select0 = Self::init_select(&bits, 0);

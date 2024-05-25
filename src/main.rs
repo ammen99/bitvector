@@ -5,6 +5,8 @@ mod tst;
 mod fast_bvec;
 mod benchmark;
 
+use crate::benchmark::*;
+
 fn main() {
-    println!("Hello, world!");
+    benchmark_rank();
 }

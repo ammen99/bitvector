@@ -38,23 +38,6 @@ impl BitVector {
         return ((self.bits[i / BIT_CELL_SIZE] >> (i % BIT_CELL_SIZE)) & 1) as u32;
     }
 
-    fn select_x(&self, mut i: usize, x: u32) -> Option<usize> {
-        if i == 0 {
-            return None;
-        }
-
-        for j in 0..self.size() {
-            if self.get_nth(j) == x {
-                i -= 1;
-                if i == 0 {
-                    return Some(j);
-                }
-            }
-        }
-
-        None
-    }
-
     fn count_ones_block(&self, b: usize, l: usize, r: usize) -> usize {
         let mut v = self.bits[b];
         if r < BIT_CELL_SIZE {
@@ -89,6 +72,23 @@ impl BitVector {
         }
 
         return count
+    }
+
+    pub fn find_nth_x(&self, start: usize, mut nth: usize, x: u32) -> Option<usize> {
+        if nth == 0 {
+            return None;
+        }
+
+        for j in start..self.size() {
+            if self.get_nth(j) == x {
+                nth -= 1;
+                if nth == 0 {
+                    return Some(j);
+                }
+            }
+        }
+
+        None
     }
 }
 
@@ -128,6 +128,28 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn find_nth_x() {
+        let n = 3*128 + 15;
+        let str = tst::generate_random_bits_string(n, 0, 0.5);
+        println!("{}", str);
+        let bv = BitVector::new_from_string(str.as_str());
+
+        for i in 0..n {
+            let mut count0 = 0;
+            let mut count1 = 0;
+            for j in i..n {
+                if bv.get_nth(j) == 0 {
+                    count0 += 1;
+                    assert_eq!(Some(j), bv.find_nth_x(i, count0, 0), "i = {}, j = {}, count0 = {}", i, j, count0);
+                } else {
+                    count1 += 1;
+                    assert_eq!(Some(j), bv.find_nth_x(i, count1, 1), "i = {}, j = {}, count1 = {}", i, j, count1);
+                }
+            }
+        }
+    }
 }
 
 pub trait RankSelectVector {
@@ -153,11 +175,12 @@ impl RankSelectVector for BitVector {
     }
 
     fn select1(&self, i: usize) -> Option<usize> {
-        self.select_x(i, 1)
+        self.find_nth_x(0, i, 1)
+
     }
 
     fn select0(&self, i: usize) -> Option<usize> {
-        self.select_x(i, 0)
+        self.find_nth_x(0, i, 0)
     }
 
     fn rank(&self, i: usize) -> usize {

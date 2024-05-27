@@ -126,9 +126,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
             //println!("from block {}", r);
         }
 
-        for j in 1..=block_rem {
-            r += self.bits.access(i - j) as usize;
-        }
+        r += self.bits.count_ones(i - block_rem, i);
 
         r
     }

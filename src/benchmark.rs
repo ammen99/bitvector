@@ -4,6 +4,9 @@ use seq_macro::seq;
 use crate::tst;
 use prettytable::*;
 use memuse::DynamicUsage;
+use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256Plus;
+use rand::seq::SliceRandom;
 
 struct Params<const A: usize, const B: usize, const C: usize>;
 
@@ -29,13 +32,16 @@ pub fn benchmark_rank() {
 
     const N: usize = BLOCKS.len();
     const M: usize = SUPERBLOCKS.len();
-    const BASE: u128 = 136395369829;
 
     let mut build_times = vec![vec![0u128; M]; N];
     let mut memory = vec![vec![0u128; M]; N];
     let mut runtimes = vec![vec![0u128; M]; N];
 
-    let string = tst::generate_random_bits_string(1 << 21, 1, 0.5);
+    let string = tst::generate_random_bits_string(1 << 22, 1, 0.5);
+
+    let mut rng = Xoshiro256Plus::seed_from_u64(123);
+    let mut queries = (0..string.len()).collect::<Vec<_>>();
+    queries.shuffle(&mut rng);
 
     seq!(I in 0..5 {
         seq!(J in 0..3 {
@@ -47,7 +53,6 @@ pub fn benchmark_rank() {
                     let bits = BitVector::new_from_string(&string);
                     type AccelVector = FastRASBVec<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 10000000000>>;
                     let mut bv = AccelVector::new_empty();
-
                     build_times[I][J] = measure_time!({
                         bv.initialize_for(bits);
                     });
@@ -56,8 +61,8 @@ pub fn benchmark_rank() {
 
 
                     runtimes[I][J] = measure_time!({
-                        for i in 0..string.len() {
-                            bv.rank(((i as u128 * BASE) % (string.len() as u128)) as usize);
+                        for x in &queries {
+                            bv.rank(*x);
                         }
                     });
 
@@ -86,10 +91,15 @@ pub fn benchmark_rank() {
         line_run.add_cell(Cell::new(format!("{}", BLOCKS[i]).as_str()));
 
         for j in 0..SUPERBLOCKS.len() {
-            line_run.add_cell(Cell::new(format!("{:.3} s", runtimes[i][j] as f64 / 1000.0).as_str()));
-            line_build.add_cell(Cell::new(format!("{:.3} s / {:.2} MB",
-                                                  build_times[i][j] as f64 / 1000.0,
-                                                  memory[i][j] as f64 / 1024.0 / 1024.0).as_str()));
+            if BLOCKS[i] > SUPERBLOCKS[j] {
+                line_run.add_cell(Cell::new("-------"));
+                line_build.add_cell(Cell::new("----------------"));
+            } else {
+                line_run.add_cell(Cell::new(format!("{:.3}s", runtimes[i][j] as f64 / 1000.0).as_str()));
+                line_build.add_cell(Cell::new(format!("{:.3}s / {:.2} MB",
+                                                      build_times[i][j] as f64 / 1000.0,
+                                                      memory[i][j] as f64 / 1024.0 / 1024.0).as_str()));
+            }
         }
 
         table_build.add_row(line_build);

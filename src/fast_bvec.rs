@@ -182,27 +182,20 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
             self.bits.size()
         };
 
+        let mut start_rk = None;
         while end - start > Parameters::SELECT_BRUTEFORCE {
             let mid = (start + end) / 2;
             let rk = self.generic_rank(mid, value);
             if rk < i {
-                start = mid
+                start = mid;
+                start_rk = Some(rk);
             } else {
-                end = mid
+                end = mid;
             }
         }
 
-        let mut olds = self.generic_rank(start, value);
-        for j in start..end {
-            if self.bits.access(j) == value {
-                olds += 1;
-                if olds == i {
-                    return Some(j)
-                }
-            }
-        }
-
-        panic!("should not happen");
+        let olds = start_rk.unwrap_or(self.generic_rank(start, value));
+        return self.bits.find_nth_x(start, i - olds, value);
     }
 }
 

@@ -47,6 +47,14 @@ impl BitVector {
         v.count_ones() as usize
     }
 
+    fn count_x_in_block(&self, b: usize, l: usize, r: usize, x: u32) -> usize {
+        if x == 1 {
+            return self.count_ones_block(b, l, r);
+        } else {
+            return (r - l) - self.count_ones_block(b, l, r);
+        }
+    }
+
     // Count the number of ones in [l, r)
     pub fn count_ones(&self, l: usize, r: usize) -> usize {
         let (mut s_block, s_offset) = l.div_rem(&BIT_CELL_SIZE);
@@ -74,10 +82,13 @@ impl BitVector {
         return count
     }
 
-    pub fn find_nth_x(&self, start: usize, mut nth: usize, x: u32) -> Option<usize> {
+    fn find_nth_x_in_block(&self, b: usize, l: usize, nth: usize, x: u32) -> Option<usize> {
         if nth == 0 {
             return None;
         }
+
+        let start = b * BIT_CELL_SIZE + l;
+        let mut nth = nth;
 
         for j in start..self.size() {
             if self.get_nth(j) == x {
@@ -89,6 +100,29 @@ impl BitVector {
         }
 
         None
+    }
+
+    pub fn find_nth_x(&self, start: usize, mut nth: usize, x: u32) -> Option<usize> {
+        if nth == 0 {
+            return None;
+        }
+
+        let (mut cur_block, mut cur_offset) = start.div_rem(&BIT_CELL_SIZE);
+
+        loop {
+            let in_cur_block_count = self.count_x_in_block(cur_block, cur_offset, BIT_CELL_SIZE, x);
+            if nth <= in_cur_block_count {
+                return self.find_nth_x_in_block(cur_block, cur_offset, nth, x);
+            }
+
+            nth -= in_cur_block_count;
+            cur_block += 1;
+            cur_offset = 0;
+
+            if cur_block >= self.bits.len() {
+                return None;
+            }
+        }
     }
 }
 

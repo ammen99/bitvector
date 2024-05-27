@@ -2,7 +2,7 @@ use std::mem::size_of;
 use memuse::DynamicUsage;
 use num::Integer;
 
-type BitCell = u128;
+type BitCell = u64;
 const BIT_CELL_SIZE: usize = size_of::<BitCell>() * 8;
 
 pub struct BitVector {

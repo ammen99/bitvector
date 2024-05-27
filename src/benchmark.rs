@@ -11,12 +11,13 @@ use rand_xoshiro::Xoshiro256Plus;
 use rand::seq::SliceRandom;
 use colored::Colorize;
 
-struct Params<const A: usize, const B: usize, const C: usize>;
+struct Params<const A: usize, const B: usize, const C: usize, const D: usize = 2>;
 
-impl<const A: usize, const B: usize, const C: usize> RASBVecParameters for Params<A, B, C> {
+impl<const A: usize, const B: usize, const C: usize, const D: usize> RASBVecParameters for Params<A, B, C, D> {
     const BLOCK_SIZE: usize = A;
     const SUPERBLOCK_SIZE: usize = B;
     const SELECT_SUPERBLOCK: usize = C;
+    const SELECT_BRUTEFORCE: usize = D;
 }
 
 macro_rules! measure_time {
@@ -117,15 +118,7 @@ pub fn benchmark_rank() {
     table_runtime.printstd();
 }
 
-pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat: usize, n_queries: usize) {
-    const SELECT_BLOCKS: [usize; 7] = [4, 16, 64, 256, 1024, 4096, 16384];
-    const N: usize = SELECT_BLOCKS.len();
-
-    let mut build_times = vec![0u128; N];
-    let mut memory = vec![0u128; N];
-    let mut runtimes0 = vec![0u128; N];
-    let mut runtimes1 = vec![0u128; N];
-
+pub fn generate_random_select(pattern: &[tst::SectionDescription], pattern_repeat: usize, n_queries: usize) -> (String, Vec<(usize, bool)>) {
     let string = tst::generate_random_bits_in_sections(pattern, pattern_repeat, 124);
 
     let count1 = string.bytes().filter(|x| *x == b'1').count();
@@ -138,6 +131,19 @@ pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat:
         let x = rng.gen_range(1..=pos);
         (x, t)
     }).collect::<Vec<_>>();
+
+    (string, queries)
+}
+
+pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat: usize, n_queries: usize) {
+    const SELECT_BLOCKS: [usize; 7] = [4, 16, 64, 256, 1024, 4096, 16384];
+    const N: usize = SELECT_BLOCKS.len();
+
+    let mut build_times = vec![0u128; N];
+    let mut memory = vec![0u128; N];
+    let mut runtimes0 = vec![0u128; N];
+    let mut runtimes1 = vec![0u128; N];
+    let (string, queries) = generate_random_select(pattern, pattern_repeat, n_queries);
 
     seq!(I in 0..7 {
         {
@@ -180,7 +186,7 @@ pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat:
     header.add_cell(Cell::new("Space"));
     header.add_cell(Cell::new("Run 1"));
     header.add_cell(Cell::new("Run 0"));
-    header.add_cell(Cell::new("Total)"));
+    header.add_cell(Cell::new("Total"));
 
     table.add_row(header);
 
@@ -199,11 +205,72 @@ pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat:
     table.printstd();
 }
 
+pub fn benchmark_select_bruteforce_param() {
+    const BRUTEFORCE: [usize; 7] = [2, 4, 8, 16, 32, 128, 256];
+    const N: usize = BRUTEFORCE.len();
+
+    let mut runtimes0 = vec![0u128; N];
+    let mut runtimes1 = vec![0u128; N];
+
+    let random = [SectionDescription{weight0: 0.5, section_len: (1 << 20), probability: 1.0}];
+    let (string, queries) = generate_random_select(&random, 1, 1 << 20);
+
+    seq!(I in 0..7 {
+        {
+            const BR: usize = BRUTEFORCE[I];
+
+            let bits = BitVector::new_from_string(&string);
+            type AccelVector = FastRASBVec<Params<256, 4096, 256, BR>>;
+            let bv = AccelVector::new(bits);
+
+            runtimes1[I] = measure_time!({
+                for (x, t) in &queries {
+                    if *t {
+                        bv.select1(*x);
+                    }
+                }
+            });
+
+            runtimes0[I] = measure_time!({
+                for (x, t) in &queries {
+                    if !*t {
+                        bv.select0(*x);
+                    }
+                }
+            });
+
+            println!("Finished BRUTE={} run1={}ms run0={}ms", BR, runtimes1[I], runtimes0[I]);
+        }
+    });
+
+    let mut table = Table::new();
+    let mut header = Row::empty();
+    header.add_cell(Cell::new("Bruteforce"));
+    header.add_cell(Cell::new("Run 1"));
+    header.add_cell(Cell::new("Run 0"));
+    header.add_cell(Cell::new("Total"));
+
+    table.add_row(header);
+
+    for i in 0..BRUTEFORCE.len() {
+        let mut line = Row::empty();
+
+        line.add_cell(Cell::new(format!("{}", BRUTEFORCE[i]).as_str()));
+        line.add_cell(Cell::new(format!("{:.3}s", runtimes1[i] as f64 / 1000.0).as_str()));
+        line.add_cell(Cell::new(format!("{:.3}s", runtimes0[i] as f64 / 1000.0).as_str()));
+        line.add_cell(Cell::new(format!("{:.3}s", (runtimes1[i] + runtimes0[i]) as f64 / 1000.0).as_str()));
+        table.add_row(line);
+    }
+
+    table.printstd();
+}
+
+#[allow(dead_code)]
 pub enum AllBench {
     Random,
     Sparse,
-    #[allow(dead_code)]
     Mixed,
+    Bruteforce,
 }
 
 pub fn benchmark_select_all(list: &[AllBench]) {
@@ -231,6 +298,10 @@ pub fn benchmark_select_all(list: &[AllBench]) {
                 println!("{}", "Testing select with mixed bit vector".blue().bold());
                 benchmark_select_one(&mixed, n / section, q);
             },
+            AllBench::Bruteforce => {
+                println!("{}", "Testing select bruteforce param".blue().bold());
+                benchmark_select_bruteforce_param();
+            }
         }
     }
 }

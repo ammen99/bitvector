@@ -192,10 +192,6 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
             }
         }
 
-        if end - start < 2 {
-            return Some(start)
-        }
-
         let mut olds = self.generic_rank(start, value);
         for j in start..end {
             if self.bits.access(j) == value {

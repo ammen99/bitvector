@@ -56,15 +56,12 @@ impl BitVector {
     }
 
     fn count_ones_block(&self, b: usize, l: usize, r: usize) -> usize {
-        let v = self.bits[b];
-        let mut count = 0;
-        for i in l..r {
-            if v & ((1 as BitCell) << (i % BIT_CELL_SIZE)) > 0 {
-                count += 1;
-            }
+        let mut v = self.bits[b];
+        if r < BIT_CELL_SIZE {
+            v &= ((1 as BitCell) << r) - 1;
         }
-
-        count
+        v >>= l;
+        v.count_ones() as usize
     }
 
     // Count the number of ones in [l, r)

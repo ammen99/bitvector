@@ -1,5 +1,7 @@
 use crate::fast_bvec::*;
 use crate::bvec::*;
+use crate::tst::SectionDescription;
+use rand::Rng;
 use seq_macro::seq;
 use crate::tst;
 use prettytable::*;
@@ -7,6 +9,7 @@ use memuse::DynamicUsage;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256Plus;
 use rand::seq::SliceRandom;
+use colored::Colorize;
 
 struct Params<const A: usize, const B: usize, const C: usize>;
 
@@ -26,6 +29,7 @@ macro_rules! measure_time {
     }
 }
 
+#[allow(dead_code)]
 pub fn benchmark_rank() {
     const BLOCKS: [usize; 5] = [4, 64, 256, 1024, 4096];
     const SUPERBLOCKS: [usize; 3] = [512, 1024, 4096];
@@ -111,4 +115,122 @@ pub fn benchmark_rank() {
 
     println!("Run times:");
     table_runtime.printstd();
+}
+
+pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat: usize, n_queries: usize) {
+    const SELECT_BLOCKS: [usize; 7] = [4, 16, 64, 256, 1024, 4096, 16384];
+    const N: usize = SELECT_BLOCKS.len();
+
+    let mut build_times = vec![0u128; N];
+    let mut memory = vec![0u128; N];
+    let mut runtimes0 = vec![0u128; N];
+    let mut runtimes1 = vec![0u128; N];
+
+    let string = tst::generate_random_bits_in_sections(pattern, pattern_repeat, 124);
+
+    let count1 = string.bytes().filter(|x| *x == b'1').count();
+    let count0 = string.len() - count1;
+
+    let mut rng = Xoshiro256Plus::seed_from_u64(123);
+    let queries = (0..n_queries).map(|_| {
+        let t = rng.gen_bool(0.5);
+        let pos = if t { count1 } else { count0 };
+        let x = rng.gen_range(1..=pos);
+        (x, t)
+    }).collect::<Vec<_>>();
+
+    seq!(I in 0..7 {
+        {
+            const SUPER: usize = SELECT_BLOCKS[I];
+
+            let bits = BitVector::new_from_string(&string);
+            type AccelVector = FastRASBVec<Params<256, 4096, SUPER>>;
+            let mut bv = AccelVector::new_empty();
+            build_times[I] = measure_time!({
+                bv.initialize_for(bits);
+            });
+
+            memory[I] = bv.dynamic_usage() as u128 + std::mem::size_of::<AccelVector>() as u128;
+
+
+            runtimes1[I] = measure_time!({
+                for (x, t) in &queries {
+                    if *t {
+                        bv.select1(*x);
+                    }
+                }
+            });
+
+            runtimes0[I] = measure_time!({
+                for (x, t) in &queries {
+                    if !*t {
+                        bv.select0(*x);
+                    }
+                }
+            });
+
+            println!("Finished SELECT_BLOCK={} build={}ms run1={}ms run0={}ms", SUPER, build_times[I], runtimes1[I], runtimes0[I]);
+        }
+    });
+
+    let mut table = Table::new();
+    let mut header = Row::empty();
+    header.add_cell(Cell::new(""));
+    header.add_cell(Cell::new("Build"));
+    header.add_cell(Cell::new("Space"));
+    header.add_cell(Cell::new("Run 1"));
+    header.add_cell(Cell::new("Run 0"));
+    header.add_cell(Cell::new("Total)"));
+
+    table.add_row(header);
+
+    for i in 0..SELECT_BLOCKS.len() {
+        let mut line = Row::empty();
+
+        line.add_cell(Cell::new(format!("{}", SELECT_BLOCKS[i]).as_str()));
+        line.add_cell(Cell::new(format!("{:.3}s", build_times[i] as f64 / 1000.0).as_str()));
+        line.add_cell(Cell::new(format!("{:.2} MB", memory[i] as f64 / 1024.0 / 1024.0).as_str()));
+        line.add_cell(Cell::new(format!("{:.3}s", runtimes1[i] as f64 / 1000.0).as_str()));
+        line.add_cell(Cell::new(format!("{:.3}s", runtimes0[i] as f64 / 1000.0).as_str()));
+        line.add_cell(Cell::new(format!("{:.3}s", (runtimes1[i] + runtimes0[i]) as f64 / 1000.0).as_str()));
+        table.add_row(line);
+    }
+
+    table.printstd();
+}
+
+pub enum AllBench {
+    Random,
+    Sparse,
+    #[allow(dead_code)]
+    Mixed,
+}
+
+pub fn benchmark_select_all(list: &[AllBench]) {
+    let q = 1 << 20;
+    let n = 1 << 22;
+
+    for l in list.iter() {
+        match l {
+            AllBench::Random => {
+                let random = [SectionDescription{weight0: 0.5, section_len: n, probability: 1.0}];
+                println!("{}", "Testing select with random bit vector".blue().bold());
+                benchmark_select_one(&random, 1, q);
+            },
+
+            AllBench::Sparse => {
+                let sparse = [SectionDescription{weight0: 0.01, section_len: n, probability: 1.0}];
+                println!("{}", "Testing select with sparse bit vector".blue().bold());
+                benchmark_select_one(&sparse, 1, q);
+
+            },
+            AllBench::Mixed => {
+                let section = 1 << 16;
+                let mixed = [SectionDescription{weight0: 0.01, section_len: section, probability: 1.0},
+                SectionDescription{weight0: 0.5, section_len: section, probability: 1.0}];
+                println!("{}", "Testing select with mixed bit vector".blue().bold());
+                benchmark_select_one(&mixed, n / section, q);
+            },
+        }
+    }
 }

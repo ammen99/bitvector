@@ -8,5 +8,6 @@ mod benchmark;
 use crate::benchmark::*;
 
 fn main() {
-    benchmark_rank();
+    //benchmark_rank();
+    benchmark_select_all(&[AllBench::Random]);
 }

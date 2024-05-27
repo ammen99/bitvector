@@ -1,6 +1,7 @@
 use std::mem::size_of;
 use memuse::DynamicUsage;
 use num::Integer;
+use cfg_if::cfg_if;
 
 type BitCell = u64;
 const BIT_CELL_SIZE: usize = size_of::<BitCell>() * 8;
@@ -82,24 +83,51 @@ impl BitVector {
         return count
     }
 
+    fn find_nth_set_bit_slow(&self, mut block: BitCell, mut nth: usize) -> usize {
+        for i in 0..BIT_CELL_SIZE {
+            nth -= (block & 1) as usize;
+            if nth == 0 {
+                return i;
+            }
+            block >>= 1;
+        }
+        panic!("Should not be reached!");
+    }
+
+    fn find_nth_set_bit(&self, block: BitCell, nth: usize) -> usize {
+        if BIT_CELL_SIZE != 64 {
+            return self.find_nth_set_bit_slow(block, nth);
+        }
+
+        cfg_if! {
+            if #[cfg(target_arch = "x86_64")] {
+                use core::arch::x86_64::_pdep_u64;
+
+                let mask = (1 as BitCell) << (nth - 1);
+
+                let r: u64 = unsafe {
+                    _pdep_u64(mask, block)
+                };
+
+                r.trailing_zeros() as usize
+
+            } else {
+                self.find_nth_set_bit_slow(block, nth)
+            }
+        }
+    }
+
     fn find_nth_x_in_block(&self, b: usize, l: usize, nth: usize, x: u32) -> Option<usize> {
         if nth == 0 {
             return None;
         }
 
-        let start = b * BIT_CELL_SIZE + l;
-        let mut nth = nth;
-
-        for j in start..self.size() {
-            if self.get_nth(j) == x {
-                nth -= 1;
-                if nth == 0 {
-                    return Some(j);
-                }
-            }
+        let mut b = self.bits[b] >> l;
+        if x == 0 {
+            b = !b;
         }
 
-        None
+        return Some(self.find_nth_set_bit(b, nth) + l);
     }
 
     pub fn find_nth_x(&self, start: usize, mut nth: usize, x: u32) -> Option<usize> {
@@ -112,7 +140,9 @@ impl BitVector {
         loop {
             let in_cur_block_count = self.count_x_in_block(cur_block, cur_offset, BIT_CELL_SIZE, x);
             if nth <= in_cur_block_count {
-                return self.find_nth_x_in_block(cur_block, cur_offset, nth, x);
+                return self.find_nth_x_in_block(cur_block, cur_offset, nth, x)
+                    .map(|x| x + cur_block * BIT_CELL_SIZE)
+                    .take_if(|x| *x < self.size());
             }
 
             nth -= in_cur_block_count;

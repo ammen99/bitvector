@@ -296,8 +296,8 @@ mod tests {
         let answers_fast = queries.iter().exec_queries(&rasb);
         let answers_slow = queries.iter().exec_queries(&slowb);
 
-        for (a, b) in answers_fast.zip(answers_slow) {
-            assert_eq!(a, b, "got {}, expected {}", a, b);
+        for ((a, b), q) in answers_fast.zip(answers_slow).zip(queries.iter()) {
+            assert_eq!(a, b, "got {}, expected {} for query {:?}", a, b, q);
         }
     }
 

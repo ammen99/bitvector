@@ -206,21 +206,23 @@ pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat:
 }
 
 pub fn benchmark_select_bruteforce_param() {
-    const BRUTEFORCE: [usize; 7] = [2, 4, 8, 16, 32, 128, 256];
+    const BRUTEFORCE: [usize; 10] = [2, 4, 8, 16, 32, 128, 256, 512, 1024, 2048];
     const N: usize = BRUTEFORCE.len();
 
     let mut runtimes0 = vec![0u128; N];
     let mut runtimes1 = vec![0u128; N];
 
-    let random = [SectionDescription{weight0: 0.5, section_len: (1 << 20), probability: 1.0}];
-    let (string, queries) = generate_random_select(&random, 1, 1 << 20);
+    let section = 1 << 16;
+    let mixed = [SectionDescription{weight0: 0.01, section_len: section, probability: 1.0},
+        SectionDescription{weight0: 0.5, section_len: section, probability: 1.0}];
+    let (string, queries) = generate_random_select(&mixed, 1, 1 << 20);
 
-    seq!(I in 0..7 {
+    seq!(I in 0..10 {
         {
             const BR: usize = BRUTEFORCE[I];
 
             let bits = BitVector::new_from_string(&string);
-            type AccelVector = FastRASBVec<Params<256, 4096, 256, BR>>;
+            type AccelVector = FastRASBVec<Params<256, 4096, 4096, BR>>;
             let bv = AccelVector::new(bits);
 
             runtimes1[I] = measure_time!({
@@ -275,7 +277,7 @@ pub enum AllBench {
 
 pub fn benchmark_select_all(list: &[AllBench]) {
     let q = 1 << 20;
-    let n = 1 << 22;
+    let n = 1 << 25;
 
     for l in list.iter() {
         match l {

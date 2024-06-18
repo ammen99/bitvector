@@ -102,15 +102,12 @@ impl BitVector {
         cfg_if! {
             if #[cfg(target_arch = "x86_64")] {
                 use core::arch::x86_64::_pdep_u64;
-
                 let mask = (1 as BitCell) << (nth - 1);
-
                 let r: u64 = unsafe {
                     _pdep_u64(mask, block)
                 };
 
                 r.trailing_zeros() as usize
-
             } else {
                 self.find_nth_set_bit_slow(block, nth)
             }

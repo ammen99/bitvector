@@ -56,8 +56,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
     pub fn initialize_for(&mut self, bits: BitVector) {
         self.bits = bits;
         self.rank = Self::init_rank(&self.bits);
-        self.select0 = Self::init_select(&self.bits, 0);
-        self.select1 = Self::init_select(&self.bits, 1);
+        (self.select0, self.select1) = Self::init_select(&self.bits);
     }
 
     pub fn debug_print(&self) {
@@ -76,6 +75,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
         let n_super = bits.size().div_ceil(Parameters::SUPERBLOCK_SIZE);
 
         let mut superblocks: Vec<usize> = vec![];
+        superblocks.push(0); // sentinel
         let mut blocks: Vec<u16> = vec![];
 
         let mut total_count: usize = 0;
@@ -107,27 +107,18 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
     }
 
     fn _rank1(&self, i: usize) -> usize {
-        let (super_idx, super_rem) = i.div_rem(&Parameters::SUPERBLOCK_SIZE);
+        let (super_idx, _) = i.div_rem(&Parameters::SUPERBLOCK_SIZE);
         let (block_idx, block_rem) = i.div_rem(&Parameters::BLOCK_SIZE);
 
         //println!("super_idx: {}, super_rem: {}, block_idx: {}, block_rem: {}", super_idx, super_rem, block_idx, block_rem);
 
-        let mut r = 0;
-        if super_idx > 0 {
-            r += self.rank.superb[super_idx - 1];
-            //println!("from superblock {}", r);
-            if super_rem == 0 {
-                return r;
-            }
-        }
-
+        let mut r = self.rank.superb[super_idx];
         if block_idx > super_idx * Self::blocks_per_superblock() {
             r += self.rank.blocks[block_idx - 1] as usize;
             //println!("from block {}", r);
         }
 
         r += self.bits.count_ones(i - block_rem, i);
-
         r
     }
 
@@ -140,27 +131,35 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
         }
     }
 
-    fn init_select(bits: &BitVector, value: u32) -> SelectSupport {
-        let mut sblocks = vec![0];
-        let mut count_in_last_sblock = 0;
-        let mut total_count = 0;
+    fn init_select(bits: &BitVector) -> (SelectSupport, SelectSupport) {
+        let mut b0 = vec![0];
+        let mut b1 = vec![0];
+
+        let sblocks = [&mut b0, &mut b1];
+        let mut count_in_last_sblock = [0, 0];
+        let mut total_count = [0, 0];
 
         for i in 0..bits.size() {
-            if bits.access(i) == value {
-                if count_in_last_sblock >= Parameters::SELECT_SUPERBLOCK {
-                    sblocks.push(i);
-                    count_in_last_sblock = 0;
-                }
-
-                count_in_last_sblock += 1;
-                total_count += 1
+            let b = if bits.access(i) == 0 { 0 } else { 1 };
+            if count_in_last_sblock[b] >= Parameters::SELECT_SUPERBLOCK {
+                sblocks[b].push(i);
+                count_in_last_sblock[b] = 0;
             }
+
+            count_in_last_sblock[b] += 1;
+            total_count[b] += 1
         }
 
-        SelectSupport {
-            blocks: sblocks,
-            total_count,
-        }
+        (
+            SelectSupport {
+                blocks: b0,
+                total_count: total_count[0],
+            },
+            SelectSupport {
+                blocks: b1,
+                total_count: total_count[1],
+            }
+        )
     }
 
     fn generic_select(&self, i: usize, value: u32) -> Option<usize> {
@@ -203,8 +202,7 @@ impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters>
 
     fn new(bits: BitVector) -> Self {
         let rank = Self::init_rank(&bits);
-        let select0 = Self::init_select(&bits, 0);
-        let select1 = Self::init_select(&bits, 1);
+        let (select0, select1) = Self::init_select(&bits);
         FastRASBVec::<Parameters> {
             bits,
             rank,

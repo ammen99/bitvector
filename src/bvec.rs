@@ -39,7 +39,7 @@ impl BitVector {
         return ((self.bits[i / BIT_CELL_SIZE] >> (i % BIT_CELL_SIZE)) & 1) as u32;
     }
 
-    fn count_ones_block(&self, b: usize, l: usize, r: usize) -> usize {
+    pub fn count_ones_block(&self, b: usize, l: usize, r: usize) -> usize {
         let mut v = self.bits[b];
         if r < BIT_CELL_SIZE {
             v &= ((1 as BitCell) << r) - 1;

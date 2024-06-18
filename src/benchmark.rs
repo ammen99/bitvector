@@ -32,8 +32,8 @@ macro_rules! measure_time {
 
 #[allow(dead_code)]
 pub fn benchmark_rank() {
-    const BLOCKS: [usize; 5] = [4, 64, 256, 1024, 4096];
-    const SUPERBLOCKS: [usize; 3] = [512, 1024, 4096];
+    const BLOCKS: [usize; 3] = [64, 256, 1024];
+    const SUPERBLOCKS: [usize; 6] = [512, 1024, 4096, 8192, 16384, 32768];
 
     const N: usize = BLOCKS.len();
     const M: usize = SUPERBLOCKS.len();
@@ -42,14 +42,14 @@ pub fn benchmark_rank() {
     let mut memory = vec![vec![0u128; M]; N];
     let mut runtimes = vec![vec![0u128; M]; N];
 
-    let string = tst::generate_random_bits_string(1 << 22, 1, 0.5);
+    let string = tst::generate_random_bits_string(1 << 26, 1, 0.5);
 
     let mut rng = Xoshiro256Plus::seed_from_u64(123);
-    let mut queries = (0..string.len()).collect::<Vec<_>>();
+    let mut queries = (0..(1 << 26)).collect::<Vec<_>>();
     queries.shuffle(&mut rng);
 
-    seq!(I in 0..5 {
-        seq!(J in 0..3 {
+    seq!(I in 0..3 {
+        seq!(J in 0..6 {
             {
                 const BLOCK_SIZE: usize = BLOCKS[I];
                 const SUPERBLOCK_SIZE: usize = SUPERBLOCKS[J];

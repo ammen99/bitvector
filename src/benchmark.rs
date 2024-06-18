@@ -206,23 +206,23 @@ pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat:
 }
 
 pub fn benchmark_select_bruteforce_param() {
-    const BRUTEFORCE: [usize; 10] = [2, 4, 8, 16, 32, 128, 256, 512, 1024, 2048];
+    const BRUTEFORCE: [usize; 8] = [32, 128, 512, 1024, 4096, 8192, 16384, 32768];
     const N: usize = BRUTEFORCE.len();
 
     let mut runtimes0 = vec![0u128; N];
     let mut runtimes1 = vec![0u128; N];
 
-    let section = 1 << 16;
+    let section = 1 << 20;
     let mixed = [SectionDescription{weight0: 0.01, section_len: section, probability: 1.0},
         SectionDescription{weight0: 0.5, section_len: section, probability: 1.0}];
-    let (string, queries) = generate_random_select(&mixed, 1, 1 << 20);
+    let (string, queries) = generate_random_select(&mixed, 16, 1 << 20);
 
-    seq!(I in 0..10 {
+    seq!(I in 0..8 {
         {
             const BR: usize = BRUTEFORCE[I];
 
             let bits = BitVector::new_from_string(&string);
-            type AccelVector = FastRASBVec<Params<256, 4096, 4096, BR>>;
+            type AccelVector = FastRASBVec<Params<256, 4096, 262144, BR>>;
             let bv = AccelVector::new(bits);
 
             runtimes1[I] = measure_time!({

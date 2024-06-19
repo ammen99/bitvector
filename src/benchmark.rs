@@ -11,13 +11,12 @@ use rand_xoshiro::Xoshiro256Plus;
 use rand::seq::SliceRandom;
 use colored::Colorize;
 
-struct Params<const A: usize, const B: usize, const C: usize, const D: usize = 2>;
+struct Params<const A: usize, const B: usize, const C: usize = 2>;
 
-impl<const A: usize, const B: usize, const C: usize, const D: usize> RASBVecParameters for Params<A, B, C, D> {
+impl<const A: usize, const B: usize, const C: usize> RASBVecParameters for Params<A, B, C> {
     const BLOCK_SIZE: usize = A;
     const SUPERBLOCK_SIZE: usize = B;
-    const SELECT_SUPERBLOCK: usize = C;
-    const SELECT_BRUTEFORCE: usize = D;
+    const SELECT_BRUTEFORCE: usize = C;
 }
 
 macro_rules! measure_time {
@@ -136,8 +135,8 @@ pub fn generate_random_select(pattern: &[tst::SectionDescription], pattern_repea
 }
 
 pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat: usize, n_queries: usize) {
-    const SELECT_BLOCKS: [usize; 7] = [4, 16, 64, 256, 1024, 4096, 16384];
-    const N: usize = SELECT_BLOCKS.len();
+    const SUPERBLOCKS: [usize; 8] = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
+    const N: usize = SUPERBLOCKS.len();
 
     let mut build_times = vec![0u128; N];
     let mut memory = vec![0u128; N];
@@ -145,12 +144,12 @@ pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat:
     let mut runtimes1 = vec![0u128; N];
     let (string, queries) = generate_random_select(pattern, pattern_repeat, n_queries);
 
-    seq!(I in 0..7 {
+    seq!(I in 0..8 {
         {
-            const SUPER: usize = SELECT_BLOCKS[I];
+            const SUPER: usize = SUPERBLOCKS[I];
 
             let bits = BitVector::new_from_string(&string);
-            type AccelVector = FastRASBVec<Params<256, 4096, SUPER>>;
+            type AccelVector = FastRASBVec<Params<256, SUPER, 8192>>;
             let mut bv = AccelVector::new_empty();
             build_times[I] = measure_time!({
                 bv.initialize_for(bits);
@@ -190,10 +189,10 @@ pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat:
 
     table.add_row(header);
 
-    for i in 0..SELECT_BLOCKS.len() {
+    for i in 0..SUPERBLOCKS.len() {
         let mut line = Row::empty();
 
-        line.add_cell(Cell::new(format!("{}", SELECT_BLOCKS[i]).as_str()));
+        line.add_cell(Cell::new(format!("{}", SUPERBLOCKS[i]).as_str()));
         line.add_cell(Cell::new(format!("{:.3}s", build_times[i] as f64 / 1000.0).as_str()));
         line.add_cell(Cell::new(format!("{:.2} MB", memory[i] as f64 / 1024.0 / 1024.0).as_str()));
         line.add_cell(Cell::new(format!("{:.3}s", runtimes1[i] as f64 / 1000.0).as_str()));
@@ -222,7 +221,7 @@ pub fn benchmark_select_bruteforce_param() {
             const BR: usize = BRUTEFORCE[I];
 
             let bits = BitVector::new_from_string(&string);
-            type AccelVector = FastRASBVec<Params<256, 4096, 262144, BR>>;
+            type AccelVector = FastRASBVec<Params<256, 4096, BR>>;
             let bv = AccelVector::new(bits);
 
             runtimes1[I] = measure_time!({

@@ -204,7 +204,7 @@ pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat:
     table.printstd();
 }
 
-pub fn benchmark_select_bruteforce_param() {
+pub fn benchmark_select_bruteforce_param(n: usize, queries: usize) {
     const BRUTEFORCE: [usize; 8] = [32, 128, 512, 1024, 4096, 8192, 16384, 32768];
     const N: usize = BRUTEFORCE.len();
 
@@ -214,7 +214,7 @@ pub fn benchmark_select_bruteforce_param() {
     let section = 1 << 20;
     let mixed = [SectionDescription{weight0: 0.01, section_len: section, probability: 1.0},
         SectionDescription{weight0: 0.5, section_len: section, probability: 1.0}];
-    let (string, queries) = generate_random_select(&mixed, 16, 1 << 20);
+    let (string, queries) = generate_random_select(&mixed, n / section, queries);
 
     seq!(I in 0..8 {
         {
@@ -275,8 +275,8 @@ pub enum AllBench {
 }
 
 pub fn benchmark_select_all(list: &[AllBench]) {
-    let q = 1 << 20;
-    let n = 1 << 25;
+    let q = 1 << 22;
+    let n = 1 << 26;
 
     for l in list.iter() {
         match l {
@@ -293,7 +293,7 @@ pub fn benchmark_select_all(list: &[AllBench]) {
 
             },
             AllBench::Mixed => {
-                let section = 1 << 16;
+                let section = 1 << 20;
                 let mixed = [SectionDescription{weight0: 0.01, section_len: section, probability: 1.0},
                 SectionDescription{weight0: 0.5, section_len: section, probability: 1.0}];
                 println!("{}", "Testing select with mixed bit vector".blue().bold());
@@ -301,7 +301,7 @@ pub fn benchmark_select_all(list: &[AllBench]) {
             },
             AllBench::Bruteforce => {
                 println!("{}", "Testing select bruteforce param".blue().bold());
-                benchmark_select_bruteforce_param();
+                benchmark_select_bruteforce_param(n, q);
             }
         }
     }

@@ -3,9 +3,39 @@ use num::Integer;
 use crate::bvec::*;
 use memuse::DynamicUsage;
 
-struct RankSupport {
-    blocks: Vec<u16>,
-    superb: Vec<usize>,
+macro_rules! num_blocks {
+    ($size:expr) => {
+        (($size - std::mem::size_of::<usize>()) / 2)
+    };
+}
+
+#[derive(Debug, Clone)]
+struct RankSuperblock<const CACHELINE_SIZE: usize> where [u16; num_blocks!(CACHELINE_SIZE)]: Sized {
+    before: usize,
+    blocks: [u16; num_blocks!(CACHELINE_SIZE)],
+}
+
+impl<const CACHELINE_SIZE: usize> RankSuperblock<CACHELINE_SIZE> where [u16; num_blocks!(CACHELINE_SIZE)]: Sized {
+    fn new() -> Self {
+        RankSuperblock::<CACHELINE_SIZE> {
+            before: 0,
+            blocks: [0; num_blocks!(CACHELINE_SIZE)],
+        }
+    }
+}
+
+impl<const CACHELINE_SIZE: usize> DynamicUsage for RankSuperblock<CACHELINE_SIZE> where [u16; num_blocks!(CACHELINE_SIZE)]: Sized {
+    fn dynamic_usage(&self) -> usize {
+        CACHELINE_SIZE
+    }
+
+    fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) {
+        (self.dynamic_usage(), None)
+    }
+}
+
+struct RankSupport<const CACHELINE_SIZE: usize> where [u16; num_blocks!(CACHELINE_SIZE)]: Sized {
+    superblocks: Vec<RankSuperblock<CACHELINE_SIZE>>,
 }
 
 struct SelectSupport {
@@ -18,18 +48,19 @@ pub trait RASBVecParameters {
     const SUPERBLOCK_SIZE: usize;
     const SELECT_SUPERBLOCK: usize;
     const SELECT_BRUTEFORCE: usize = 2;
+    const CACHELINE_SIZE: usize = ((Self::SUPERBLOCK_SIZE / Self::BLOCK_SIZE) * 2 + 8);
 }
 
-pub struct FastRASBVec<Parameters: RASBVecParameters> {
+pub struct FastRASBVec<Parameters: RASBVecParameters> where [u16; num_blocks!(Parameters::CACHELINE_SIZE)]: Sized {
     bits: BitVector,
-    rank: RankSupport,
+    rank: RankSupport<{Parameters::CACHELINE_SIZE}>,
     select0: SelectSupport,
     select1: SelectSupport,
     pd: std::marker::PhantomData<Parameters>,
 }
 
 #[allow(dead_code)]
-impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
+impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [u16; num_blocks!(Parameters::CACHELINE_SIZE)]: Sized {
     pub fn size(&self) -> usize {
         self.bits.size()
     }
@@ -38,8 +69,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
         FastRASBVec::<Parameters> {
             bits: BitVector::new_from_string("0"),
             rank: RankSupport {
-                blocks: vec![0],
-                superb: vec![0],
+                superblocks: vec![],
             },
             select0: SelectSupport {
                 blocks: vec![0],
@@ -60,8 +90,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
     }
 
     pub fn debug_print(&self) {
-        println!("Superblocks: {:?}", self.rank.superb);
-        println!("Blocks: {:?}", self.rank.blocks);
+        println!("Superblocks: {:?}", self.rank.superblocks);
         println!("select0: {:?}", self.select0.blocks);
         println!("select1: {:?}", self.select1.blocks);
     }
@@ -70,54 +99,44 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
         Parameters::SUPERBLOCK_SIZE / Parameters::BLOCK_SIZE
     }
 
-    fn init_rank(bits: &BitVector) -> RankSupport {
-        let n_blocks = bits.size().div_ceil(Parameters::BLOCK_SIZE);
+    fn init_rank(bits: &BitVector) -> RankSupport<{Parameters::CACHELINE_SIZE}> {
         let n_super = bits.size().div_ceil(Parameters::SUPERBLOCK_SIZE);
 
-        let mut superblocks: Vec<usize> = vec![];
-        superblocks.push(0); // sentinel
-        let mut blocks: Vec<u16> = vec![];
+        let mut rk = RankSupport {
+            superblocks: vec![RankSuperblock::new(); n_super],
+        };
 
         let mut total_count: usize = 0;
         for i in 0..n_super {
             let mut sblock_count: u16 = 0;
             assert!(usize::from(u16::MAX) >= Parameters::SUPERBLOCK_SIZE);
+            assert!(Self::blocks_per_superblock() <= rk.superblocks[i].blocks.len(), "Try increasing cache line size!");
 
+            rk.superblocks[i].before = total_count;
             for j in 0..Self::blocks_per_superblock() {
+                rk.superblocks[i].blocks[j] = sblock_count;
                 for k in 0..Parameters::BLOCK_SIZE {
                     let bit = i * Parameters::SUPERBLOCK_SIZE + j * Parameters::BLOCK_SIZE + k;
                     if bit < bits.size() {
                         sblock_count += bits.access(bit) as u16;
                     }
                 }
-
-                if i * Self::blocks_per_superblock() + j < n_blocks {
-                    blocks.push(sblock_count as u16);
-                }
             }
 
             total_count += sblock_count as usize;
-            superblocks.push(total_count);
         }
 
-        RankSupport {
-            blocks,
-            superb: superblocks,
-        }
+        rk
     }
 
     fn _rank1(&self, i: usize) -> usize {
-        let (super_idx, _) = i.div_rem(&Parameters::SUPERBLOCK_SIZE);
-        let (block_idx, block_rem) = i.div_rem(&Parameters::BLOCK_SIZE);
+        let (super_idx, super_rem) = i.div_rem(&Parameters::SUPERBLOCK_SIZE);
+        let (block_idx, block_rem) = super_rem.div_rem(&Parameters::BLOCK_SIZE);
 
         //println!("super_idx: {}, super_rem: {}, block_idx: {}, block_rem: {}", super_idx, super_rem, block_idx, block_rem);
 
-        let mut r = self.rank.superb[super_idx];
-        if block_idx > super_idx * Self::blocks_per_superblock() {
-            r += self.rank.blocks[block_idx - 1] as usize;
-            //println!("from block {}", r);
-        }
-
+        let mut r = self.rank.superblocks[super_idx].before;
+        r += self.rank.superblocks[super_idx].blocks[block_idx] as usize;
         r += self.bits.count_ones(i - block_rem, i);
         r
     }
@@ -198,7 +217,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> {
     }
 }
 
-impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters> {
+impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters> where [u16; num_blocks!(Parameters::CACHELINE_SIZE)]: Sized {
 
     fn new(bits: BitVector) -> Self {
         let rank = Self::init_rank(&bits);
@@ -229,10 +248,10 @@ impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters>
     }
 }
 
-impl<Parameters: RASBVecParameters> DynamicUsage for FastRASBVec<Parameters> {
+impl<Parameters: RASBVecParameters> DynamicUsage for FastRASBVec<Parameters> where [u16; num_blocks!(Parameters::CACHELINE_SIZE)]: Sized {
     fn dynamic_usage(&self) -> usize {
         self.bits.dynamic_usage() +
-            self.rank.blocks.dynamic_usage() + self.rank.superb.dynamic_usage() +
+            self.rank.superblocks.dynamic_usage() +
             self.select0.blocks.dynamic_usage() + self.select1.blocks.dynamic_usage()
     }
 
@@ -279,7 +298,7 @@ mod tests {
         test_simple_select::<FastRASBVec<SmallRASB>>();
     }
 
-    fn test_generic<Parameters: RASBVecParameters>(size: usize, nr_queries: usize, seed: u64) {
+    fn test_generic<Parameters: RASBVecParameters>(size: usize, nr_queries: usize, seed: u64) where [u16; num_blocks!(Parameters::CACHELINE_SIZE)]: Sized {
         let bits = generate_random_bits_string(size, seed, 0.5);
         println!("{}", bits);
         let rasb = FastRASBVec::<Parameters>::new(BitVector::new_from_string(bits.as_str()));

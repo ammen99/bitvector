@@ -12,5 +12,5 @@ use crate::benchmark::*;
 
 fn main() {
     benchmark_rank();
-    benchmark_select_all(&[AllBench::Bruteforce, AllBench::Random, AllBench::Sparse, AllBench::Mixed]);
+    //benchmark_select_all(&[AllBench::Bruteforce, AllBench::Random, AllBench::Sparse, AllBench::Mixed]);
 }

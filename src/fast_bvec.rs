@@ -42,7 +42,7 @@ pub trait RASBVecParameters {
     const BLOCK_SIZE: usize;
     const SUPERBLOCK_SIZE: usize;
     const SELECT_BRUTEFORCE: usize = 2;
-    const CACHELINE_SIZE: usize = ((Self::SUPERBLOCK_SIZE / Self::BLOCK_SIZE) * 2 + 8);
+    const CACHELINE_SIZE: usize = ((Self::SUPERBLOCK_SIZE / Self::BLOCK_SIZE) * 2 + 8).next_multiple_of(16);
 }
 
 pub struct FastRASBVec<Parameters: RASBVecParameters> where [u16; num_blocks!(Parameters::CACHELINE_SIZE)]: Sized {

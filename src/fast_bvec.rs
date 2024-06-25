@@ -26,7 +26,7 @@ impl<const CACHELINE_SIZE: usize> RankSuperblock<CACHELINE_SIZE> where [u16; num
 
 impl<const CACHELINE_SIZE: usize> DynamicUsage for RankSuperblock<CACHELINE_SIZE> where [u16; num_blocks!(CACHELINE_SIZE)]: Sized {
     fn dynamic_usage(&self) -> usize {
-        CACHELINE_SIZE
+        0
     }
 
     fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) {

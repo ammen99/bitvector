@@ -11,7 +11,7 @@ use rand_xoshiro::Xoshiro256Plus;
 use rand::seq::SliceRandom;
 use colored::Colorize;
 
-struct Params<const A: usize, const B: usize, const C: usize = 2>;
+pub struct Params<const A: usize, const B: usize, const C: usize = 2>;
 
 impl<const A: usize, const B: usize, const C: usize> RASBVecParameters for Params<A, B, C> {
     const BLOCK_SIZE: usize = A;
@@ -19,6 +19,7 @@ impl<const A: usize, const B: usize, const C: usize> RASBVecParameters for Param
     const SELECT_BRUTEFORCE: usize = C;
 }
 
+#[macro_export]
 macro_rules! measure_time {
     ($block:block) => {
         {

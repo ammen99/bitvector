@@ -105,11 +105,11 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [u16; num_bloc
             rk.superblocks[i].before = total_count;
             for j in 0..Self::blocks_per_superblock() {
                 rk.superblocks[i].blocks[j] = sblock_count;
-                for k in 0..Parameters::BLOCK_SIZE {
-                    let bit = i * Parameters::SUPERBLOCK_SIZE + j * Parameters::BLOCK_SIZE + k;
-                    if bit < bits.size() {
-                        sblock_count += bits.access(bit) as u16;
-                    }
+
+                let block_start = i * Parameters::SUPERBLOCK_SIZE + j * Parameters::BLOCK_SIZE;
+                if block_start < bits.size() {
+                    let block_end = std::cmp::min(block_start + Parameters::BLOCK_SIZE, bits.size());
+                    sblock_count += bits.count_ones(block_start, block_end) as u16;
                 }
             }
 

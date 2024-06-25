@@ -140,6 +140,22 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [u16; num_bloc
         }
     }
 
+    fn value_count_before_sblock(&self, b: usize, value: u32) -> usize {
+        if value == 1 {
+            self.rank.superblocks[b].before
+        } else {
+            b * Parameters::SUPERBLOCK_SIZE - self.rank.superblocks[b].before
+        }
+    }
+
+    fn value_count_before_block(&self, sb: usize, b: usize, value: u32) -> usize {
+        if value == 1 {
+            self.rank.superblocks[sb].blocks[b] as usize
+        } else {
+            b * Parameters::BLOCK_SIZE - self.rank.superblocks[sb].blocks[b] as usize
+        }
+    }
+
     fn generic_select(&self, i: usize, value: u32) -> Option<usize> {
         if i == 0 {
             return None;
@@ -150,39 +166,43 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [u16; num_bloc
             return None
         }
 
+        // Step 1: binary search over rank superblocks, so that we can find the superblock where
+        // our match should be.
         let mut lsblock = 0usize;
         let mut rsblock = self.rank.superblocks.len();
-        while rsblock - lsblock > 1 {
+        while rsblock - lsblock > Parameters::SELECT_BRUTEFORCE {
             let mid = (lsblock + rsblock) / 2;
-            let before = if value == 1 {
-                self.rank.superblocks[mid].before
-            } else {
-                mid * Parameters::SUPERBLOCK_SIZE - self.rank.superblocks[mid].before
-            };
-
-            if before >= i {
+            if self.value_count_before_sblock(mid, value) >= i {
                 rsblock = mid;
             } else {
                 lsblock = mid;
             }
         }
 
-        let mut start = lsblock * Parameters::SUPERBLOCK_SIZE;
-        let mut end = std::cmp::min(rsblock * Parameters::SUPERBLOCK_SIZE, self.bits.size());
-        let mut start_rk = None;
-        while end - start > Parameters::SELECT_BRUTEFORCE {
-            let mid = (start + end) / 2;
-            let rk = self.generic_rank(mid, value);
-            if rk < i {
-                start = mid;
-                start_rk = Some(rk);
-            } else {
-                end = mid;
-            }
+        // Finish the search, because we do the last few blocks with manual search, benchmarks show
+        // it is faster this way.
+        while self.value_count_before_sblock(rsblock - 1, value) >= i {
+            rsblock -= 1;
         }
 
-        let olds = start_rk.unwrap_or(self.generic_rank(start, value));
-        return self.bits.find_nth_x(start, i - olds, value);
+        let start_sblock = rsblock - 1;
+        let start = start_sblock * Parameters::SUPERBLOCK_SIZE;
+        let in_superblock = i - self.value_count_before_sblock(start_sblock, value);
+
+        // Manually search for the correct block in the superblock where our match is.
+        // The blocks should already be in the cache so this should be fast.
+        let mut b = 0;
+        while b < (Self::blocks_per_superblock() - 1) {
+            let up_to_block = self.value_count_before_block(start_sblock, b+1, value);
+            if up_to_block >= in_superblock {
+                break;
+            }
+            b += 1;
+        }
+
+        // Final step: manually search for the fitting bit inside the target block.
+        return self.bits.find_nth_x(start + b * Parameters::BLOCK_SIZE,
+            in_superblock - self.value_count_before_block(start_sblock, b, value), value);
     }
 }
 

@@ -58,7 +58,7 @@ fn praktikum_main() {
         let accel_bv;
 
         let time_build = measure_time!({
-            accel_bv = fast_bvec::FastRASBVec::<Params<512, 8192, 8192>>::new(bv);
+            accel_bv = fast_bvec::FastRASBVec::<Params<512, 8192, 16>>::new(bv);
         });
 
         let time_query = measure_time!({
@@ -84,5 +84,5 @@ fn praktikum_main() {
 fn main() {
     praktikum_main();
     //benchmark_rank();
-    //benchmark_select_all(&[AllBench::Random]);
+    //benchmark_select_all(&[AllBench::Bruteforce]);
 }

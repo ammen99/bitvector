@@ -39,7 +39,7 @@ impl BitVector {
         return ((self.bits[i / BIT_CELL_SIZE] >> (i % BIT_CELL_SIZE)) & 1) as u32;
     }
 
-    pub fn count_ones_block(&self, b: usize, l: usize, r: usize) -> usize {
+    fn count_ones_bit_cell(&self, b: usize, l: usize, r: usize) -> usize {
         let mut v = self.bits[b];
         if r < BIT_CELL_SIZE {
             v &= ((1 as BitCell) << r) - 1;
@@ -48,55 +48,55 @@ impl BitVector {
         v.count_ones() as usize
     }
 
-    fn count_x_in_block(&self, b: usize, l: usize, r: usize, x: u32) -> usize {
+    fn count_x_in_bit_cell(&self, b: usize, l: usize, r: usize, x: u32) -> usize {
         if x == 1 {
-            return self.count_ones_block(b, l, r);
+            return self.count_ones_bit_cell(b, l, r);
         } else {
-            return (r - l) - self.count_ones_block(b, l, r);
+            return (r - l) - self.count_ones_bit_cell(b, l, r);
         }
     }
 
     // Count the number of ones in [l, r)
     pub fn count_ones(&self, l: usize, r: usize) -> usize {
-        let (mut s_block, s_offset) = l.div_rem(&BIT_CELL_SIZE);
-        let (e_block, e_offset) = r.div_rem(&BIT_CELL_SIZE);
+        let (mut s_bit_cell, s_offset) = l.div_rem(&BIT_CELL_SIZE);
+        let (e_bit_cell, e_offset) = r.div_rem(&BIT_CELL_SIZE);
 
-        if s_block == e_block {
-            return self.count_ones_block(s_block, s_offset, e_offset);
+        if s_bit_cell == e_bit_cell {
+            return self.count_ones_bit_cell(s_bit_cell, s_offset, e_offset);
         }
 
         let mut count = 0;
 
         if s_offset != 0 {
-            count += self.count_ones_block(s_block, s_offset, BIT_CELL_SIZE);
-            s_block += 1;
+            count += self.count_ones_bit_cell(s_bit_cell, s_offset, BIT_CELL_SIZE);
+            s_bit_cell += 1;
         }
 
-        for b in s_block..e_block {
+        for b in s_bit_cell..e_bit_cell {
             count += self.bits[b].count_ones() as usize;
         }
 
         if e_offset != 0 {
-            count += self.count_ones_block(e_block, 0, e_offset);
+            count += self.count_ones_bit_cell(e_bit_cell, 0, e_offset);
         }
 
         return count
     }
 
-    fn find_nth_set_bit_slow(&self, mut block: BitCell, mut nth: usize) -> usize {
+    fn find_nth_set_bit_slow(&self, mut bit_cell: BitCell, mut nth: usize) -> usize {
         for i in 0..BIT_CELL_SIZE {
-            nth -= (block & 1) as usize;
+            nth -= (bit_cell & 1) as usize;
             if nth == 0 {
                 return i;
             }
-            block >>= 1;
+            bit_cell >>= 1;
         }
         panic!("Should not be reached!");
     }
 
-    fn find_nth_set_bit(&self, block: BitCell, nth: usize) -> usize {
+    fn find_nth_set_bit(&self, bit_cell: BitCell, nth: usize) -> usize {
         if BIT_CELL_SIZE != 64 {
-            return self.find_nth_set_bit_slow(block, nth);
+            return self.find_nth_set_bit_slow(bit_cell, nth);
         }
 
         cfg_if! {
@@ -104,17 +104,19 @@ impl BitVector {
                 use core::arch::x86_64::_pdep_u64;
                 let mask = (1 as BitCell) << (nth - 1);
                 let r: u64 = unsafe {
-                    _pdep_u64(mask, block)
+                    _pdep_u64(mask, bit_cell)
                 };
 
                 r.trailing_zeros() as usize
             } else {
-                self.find_nth_set_bit_slow(block, nth)
+                self.find_nth_set_bit_slow(bit_cell, nth)
             }
         }
     }
 
-    fn find_nth_x_in_block(&self, b: usize, l: usize, nth: usize, x: u32) -> Option<usize> {
+    // Find nth x in a bit_cell with index b, starting at offset l.
+    // Does not find matches beyond the end of the particular bit cell.
+    fn find_nth_x_in_bit_cell(&self, b: usize, l: usize, nth: usize, x: u32) -> Option<usize> {
         if nth == 0 {
             return None;
         }
@@ -132,21 +134,21 @@ impl BitVector {
             return None;
         }
 
-        let (mut cur_block, mut cur_offset) = start.div_rem(&BIT_CELL_SIZE);
+        let (mut cur_bit_cell, mut cur_offset) = start.div_rem(&BIT_CELL_SIZE);
 
         loop {
-            let in_cur_block_count = self.count_x_in_block(cur_block, cur_offset, BIT_CELL_SIZE, x);
-            if nth <= in_cur_block_count {
-                return self.find_nth_x_in_block(cur_block, cur_offset, nth, x)
-                    .map(|x| x + cur_block * BIT_CELL_SIZE)
+            let in_cur_bit_cell_count = self.count_x_in_bit_cell(cur_bit_cell, cur_offset, BIT_CELL_SIZE, x);
+            if nth <= in_cur_bit_cell_count {
+                return self.find_nth_x_in_bit_cell(cur_bit_cell, cur_offset, nth, x)
+                    .map(|x| x + cur_bit_cell * BIT_CELL_SIZE)
                     .take_if(|x| *x < self.size());
             }
 
-            nth -= in_cur_block_count;
-            cur_block += 1;
+            nth -= in_cur_bit_cell_count;
+            cur_bit_cell += 1;
             cur_offset = 0;
 
-            if cur_block >= self.bits.len() {
+            if cur_bit_cell >= self.bits.len() {
                 return None;
             }
         }

@@ -206,7 +206,7 @@ pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat:
 }
 
 pub fn benchmark_select_bruteforce_param(n: usize, queries: usize) {
-    const BRUTEFORCE: [usize; 8] = [32, 128, 512, 1024, 4096, 8192, 16384, 32768];
+    const BRUTEFORCE: [usize; 10] = [1, 2, 4, 8, 16, 32, 128, 256, 512, 1024];
     const N: usize = BRUTEFORCE.len();
 
     let mut runtimes0 = vec![0u128; N];
@@ -217,12 +217,12 @@ pub fn benchmark_select_bruteforce_param(n: usize, queries: usize) {
         SectionDescription{weight0: 0.5, section_len: section, probability: 1.0}];
     let (string, queries) = generate_random_select(&mixed, n / section, queries);
 
-    seq!(I in 0..8 {
+    seq!(I in 0..10 {
         {
             const BR: usize = BRUTEFORCE[I];
 
             let bits = BitVector::new_from_string(&string);
-            type AccelVector = FastRASBVec<Params<256, 4096, BR>>;
+            type AccelVector = FastRASBVec<Params<8192, 8192, BR>>;
             let bv = AccelVector::new(bits);
 
             runtimes1[I] = measure_time!({

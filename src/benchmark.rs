@@ -32,8 +32,8 @@ macro_rules! measure_time {
 
 #[allow(dead_code)]
 pub fn benchmark_rank() {
-    const BLOCKS: [usize; 3] = [64, 256, 1024];
-    const SUPERBLOCKS: [usize; 6] = [512, 1024, 4096, 8192, 16384, 32768];
+    const BLOCKS: [usize; 6] = [64, 256, 512, 1024, 2048, 4096];
+    const SUPERBLOCKS: [usize; 3] = [4096, 8192, 16384];
 
     const N: usize = BLOCKS.len();
     const M: usize = SUPERBLOCKS.len();
@@ -42,14 +42,14 @@ pub fn benchmark_rank() {
     let mut memory = vec![vec![0u128; M]; N];
     let mut runtimes = vec![vec![0u128; M]; N];
 
-    let string = tst::generate_random_bits_string(1 << 26, 1, 0.5);
+    let string = tst::generate_random_bits_string(1 << 30, 1, 0.5);
 
     let mut rng = Xoshiro256Plus::seed_from_u64(123);
     let mut queries = (0..(1 << 26)).collect::<Vec<_>>();
     queries.shuffle(&mut rng);
 
-    seq!(I in 0..3 {
-        seq!(J in 0..6 {
+    seq!(I in 0..6 {
+        seq!(J in 0..3 {
             {
                 const BLOCK_SIZE: usize = BLOCKS[I];
                 const SUPERBLOCK_SIZE: usize = SUPERBLOCKS[J];
@@ -136,7 +136,7 @@ pub fn generate_random_select(pattern: &[tst::SectionDescription], pattern_repea
 }
 
 pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat: usize, n_queries: usize) {
-    const SUPERBLOCKS: [usize; 8] = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
+    const SUPERBLOCKS: [usize; 4] = [4096, 8192, 16384, 32768];
     const N: usize = SUPERBLOCKS.len();
 
     let mut build_times = vec![0u128; N];
@@ -145,7 +145,7 @@ pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat:
     let mut runtimes1 = vec![0u128; N];
     let (string, queries) = generate_random_select(pattern, pattern_repeat, n_queries);
 
-    seq!(I in 0..8 {
+    seq!(I in 0..4 {
         {
             const SUPER: usize = SUPERBLOCKS[I];
 
@@ -277,7 +277,7 @@ pub enum AllBench {
 
 pub fn benchmark_select_all(list: &[AllBench]) {
     let q = 1 << 22;
-    let n = 1 << 26;
+    let n = 1 << 30;
 
     for l in list.iter() {
         match l {

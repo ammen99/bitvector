@@ -3,6 +3,7 @@ use num::Integer;
 use crate::bvec::*;
 use memuse::DynamicUsage;
 
+
 macro_rules! num_blocks {
     ($size:expr) => {
         (($size - std::mem::size_of::<usize>()) / 2)
@@ -42,7 +43,7 @@ pub trait RASBVecParameters {
     const BLOCK_SIZE: usize;
     const SUPERBLOCK_SIZE: usize;
     const SELECT_BRUTEFORCE: usize = 2;
-    const CACHELINE_SIZE: usize = ((Self::SUPERBLOCK_SIZE / Self::BLOCK_SIZE) * 2 + 8).next_multiple_of(16);
+    const CACHELINE_SIZE: usize = ((Self::SUPERBLOCK_SIZE / Self::BLOCK_SIZE) * 2 + 8).next_multiple_of(1);
 }
 
 pub struct FastRASBVec<Parameters: RASBVecParameters> where [u16; num_blocks!(Parameters::CACHELINE_SIZE)]: Sized {
@@ -99,7 +100,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [u16; num_bloc
         let mut total_count: usize = 0;
         for i in 0..n_super {
             let mut sblock_count: u16 = 0;
-            assert!(usize::from(u16::MAX) >= Parameters::SUPERBLOCK_SIZE);
+            assert!(usize::from(u16::MAX) >= (Self::blocks_per_superblock() - 1) * Parameters::BLOCK_SIZE, "Superblock size is too big for u16 blocks!");
             assert!(Self::blocks_per_superblock() <= rk.superblocks[i].blocks.len(), "Try increasing cache line size!");
 
             rk.superblocks[i].before = total_count;
@@ -239,7 +240,7 @@ impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters>
 
 impl<Parameters: RASBVecParameters> DynamicUsage for FastRASBVec<Parameters> where [u16; num_blocks!(Parameters::CACHELINE_SIZE)]: Sized {
     fn dynamic_usage(&self) -> usize {
-        self.bits.dynamic_usage() + self.rank.superblocks.dynamic_usage()
+        self.rank.superblocks.dynamic_usage()
     }
 
     fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) {

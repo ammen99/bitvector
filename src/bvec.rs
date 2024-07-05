@@ -3,6 +3,12 @@ use memuse::DynamicUsage;
 use num::Integer;
 use cfg_if::cfg_if;
 
+use std::fs::File;
+use std::io::BufReader;
+use std::io::Read;
+use std::io::BufRead;
+use std::iter::Iterator;
+
 type BitCell = u64;
 const BIT_CELL_SIZE: usize = size_of::<BitCell>() * 8;
 
@@ -12,10 +18,51 @@ pub struct BitVector {
 }
 
 impl BitVector {
-    pub fn new(bits: Vec<bool>) -> Self {
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn new_from_input(file: &mut BufReader<File>) -> Self {
+        let mut v = vec![];
+        const BUF_SIZE: u64 = 1 << 26;
+        let mut buf = vec![];
+        let mut total_size: usize = 0;
+        let mut idx: usize = 0;
+
+        loop {
+            let n = file.by_ref().take(BUF_SIZE).read_until('\n' as u8, &mut buf).unwrap();
+
+            buf.reserve(n);
+            for i in 0..n {
+                if buf[i] == '\n' as u8 {
+                    return Self {
+                        bits: v,
+                        size: total_size,
+                    }
+                }
+
+                if idx % BIT_CELL_SIZE == 0 {
+                    v.push(0);
+                    idx = 0;
+                }
+
+                if buf[i] == '1' as u8 {
+                    *v.last_mut().unwrap() |= (1 as BitCell) << idx;
+                }
+
+                idx += 1;
+                total_size += 1;
+            }
+
+            buf.clear();
+        }
+    }
+
+    pub fn new_from_string(bits: &str) -> Self {
         let mut v = vec![0; bits.len().div_ceil(BIT_CELL_SIZE)];
+        let mut bytes = bits.bytes();
         for i in 0..bits.len() {
-            if bits[i] {
+            if bytes.next().unwrap() == '1' as u8 {
                 v[i / BIT_CELL_SIZE] |= (1 as BitCell) << (i % BIT_CELL_SIZE);
             }
         }
@@ -23,14 +70,6 @@ impl BitVector {
             bits: v,
             size: bits.len(),
         }
-    }
-
-    pub fn size(&self) -> usize {
-        self.size
-    }
-
-    pub fn new_from_string(bits: &str) -> Self {
-        return BitVector::new(bits.chars().map(|x| x == '1').collect())
     }
 
     // Get the i'th element of the bitvector

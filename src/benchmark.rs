@@ -1,9 +1,7 @@
 use crate::fast_bvec::*;
 use crate::bvec::*;
-use crate::tst::SectionDescription;
 use rand::Rng;
 use seq_macro::seq;
-use crate::tst;
 use prettytable::*;
 use memuse::DynamicUsage;
 use rand::SeedableRng;
@@ -11,7 +9,7 @@ use rand_xoshiro::Xoshiro256Plus;
 use rand::seq::SliceRandom;
 use colored::Colorize;
 
-pub struct Params<const A: usize, const B: usize, const C: usize = 2>;
+pub struct Params<const A: usize, const B: usize, const C: usize = 1>;
 
 impl<const A: usize, const B: usize, const C: usize> RASBVecParameters for Params<A, B, C> {
     const BLOCK_SIZE: usize = A;
@@ -32,7 +30,15 @@ macro_rules! measure_time {
     }
 }
 
-pub fn benchmark_rank() {
+trait Benchmarker {
+    fn init_benchmark(&mut self, bitlen: usize) -> BitVector {
+        BitVector::generate_random(bitlen, 1)
+    }
+
+    fn run_benchmark<I: RankSelectVector>(&self, bv: &I) where Self: Sized;
+}
+
+fn benchmark_generic_random<Bench: Benchmarker>(bitlen: usize, mut b: Bench) {
     const BLOCKS: [usize; 9] = [64, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
     const SUPERBLOCKS: [usize; 6] = [4096, 8192, 16384, 32768, 65536, 131072];
 
@@ -42,12 +48,7 @@ pub fn benchmark_rank() {
     let mut build_times = vec![vec![0u128; M]; N];
     let mut memory = vec![vec![0u128; M]; N];
     let mut runtimes = vec![vec![0u128; M]; N];
-
-    let bits = BitVector::generate_random(1usize << 33, 1);
-    let mut rng = Xoshiro256Plus::seed_from_u64(123);
-    let mut queries = (0..(1 << 26)).collect::<Vec<_>>();
-
-    queries.shuffle(&mut rng);
+    let bits = b.init_benchmark(bitlen);
 
     seq!(I in 0..9 {
         seq!(J in 0..6 {
@@ -56,21 +57,16 @@ pub fn benchmark_rank() {
                 const SUPERBLOCK_SIZE: usize = SUPERBLOCKS[J];
 
                 if BLOCK_SIZE <= SUPERBLOCK_SIZE {
-                    type AccelVector = FastRASBVec<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 10000000000>>;
+                    type AccelVector = FastRASBVec<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 1>>;
                     let mut bv = AccelVector::new_empty();
                     let bclone = bits.clone();
-
                     build_times[I][J] = measure_time!({
                         bv.initialize_for(bclone);
                     });
 
                     memory[I][J] = bv.dynamic_usage() as u128 + std::mem::size_of::<AccelVector>() as u128;
-
-
                     runtimes[I][J] = measure_time!({
-                        for x in &queries {
-                            bv.rank(*x);
-                        }
+                        b.run_benchmark(&bv);
                     });
 
                     println!("Finished B={} S={} build={}ms run={}ms", BLOCK_SIZE, SUPERBLOCK_SIZE, build_times[I][J], runtimes[I][J]);
@@ -121,91 +117,77 @@ pub fn benchmark_rank() {
     table_runtime.printstd();
 }
 
-pub fn generate_random_select(pattern: &[tst::SectionDescription], pattern_repeat: usize, n_queries: usize) -> (String, Vec<(usize, bool)>) {
-    let string = tst::generate_random_bits_in_sections(pattern, pattern_repeat, 124);
+struct RankBenchmark {
+    queries: Vec<usize>
+}
 
-    let count1 = string.bytes().filter(|x| *x == b'1').count();
-    let count0 = string.len() - count1;
+impl Benchmarker for RankBenchmark {
+    fn run_benchmark<I: RankSelectVector>(&self, bv: &I) where Self: Sized {
+        for x in &self.queries {
+            bv.rank(*x);
+        }
 
+    }
+}
+
+pub fn benchmark_rank() {
+    let n = 1usize << 33;
     let mut rng = Xoshiro256Plus::seed_from_u64(123);
-    let queries = (0..n_queries).map(|_| {
+
+    let mut bench = RankBenchmark {
+        queries: (0..(1 << 26)).collect::<Vec<_>>()
+    };
+
+    bench.queries.shuffle(&mut rng);
+    benchmark_generic_random(n, bench);
+}
+
+struct RandomSelectBenchmark {
+    queries: Vec<(usize, bool)>,
+    nr_queries: usize,
+    seed: u64,
+}
+
+impl RandomSelectBenchmark {
+    fn new(nr_queries: usize, seed: u64) -> Self {
+
+        Self {
+            queries: Vec::new(),
+            nr_queries,
+            seed,
+        }
+    }
+}
+
+fn generate_random_select_queries(bits: &BitVector, nr_queries: usize, seed: u64) -> Vec<(usize, bool)> {
+    let count1 = bits.count_ones(0, bits.size());
+    let count0 = bits.size() - count1;
+
+    let mut rng = Xoshiro256Plus::seed_from_u64(seed);
+    (0..nr_queries).map(|_| {
         let t = rng.gen_bool(0.5);
         let pos = if t { count1 } else { count0 };
         let x = rng.gen_range(1..=pos);
         (x, t)
-    }).collect::<Vec<_>>();
-
-    (string, queries)
+    }).collect::<Vec<_>>()
 }
 
-pub fn benchmark_select_one(pattern: &[tst::SectionDescription], pattern_repeat: usize, n_queries: usize) {
-    const SUPERBLOCKS: [usize; 4] = [4096, 8192, 16384, 32768];
-    const N: usize = SUPERBLOCKS.len();
-
-    let mut build_times = vec![0u128; N];
-    let mut memory = vec![0u128; N];
-    let mut runtimes0 = vec![0u128; N];
-    let mut runtimes1 = vec![0u128; N];
-    let (string, queries) = generate_random_select(pattern, pattern_repeat, n_queries);
-
-    seq!(I in 0..4 {
-        {
-            const SUPER: usize = SUPERBLOCKS[I];
-
-            let bits = BitVector::new_from_string(&string);
-            type AccelVector = FastRASBVec<Params<256, SUPER, 8192>>;
-            let mut bv = AccelVector::new_empty();
-            build_times[I] = measure_time!({
-                bv.initialize_for(bits);
-            });
-
-            memory[I] = bv.dynamic_usage() as u128 + std::mem::size_of::<AccelVector>() as u128;
-
-
-            runtimes1[I] = measure_time!({
-                for (x, t) in &queries {
-                    if *t {
-                        bv.select1(*x);
-                    }
-                }
-            });
-
-            runtimes0[I] = measure_time!({
-                for (x, t) in &queries {
-                    if !*t {
-                        bv.select0(*x);
-                    }
-                }
-            });
-
-            println!("Finished SELECT_BLOCK={} build={}ms run1={}ms run0={}ms", SUPER, build_times[I], runtimes1[I], runtimes0[I]);
-        }
-    });
-
-    let mut table = Table::new();
-    let mut header = Row::empty();
-    header.add_cell(Cell::new(""));
-    header.add_cell(Cell::new("Build"));
-    header.add_cell(Cell::new("Space"));
-    header.add_cell(Cell::new("Run 1"));
-    header.add_cell(Cell::new("Run 0"));
-    header.add_cell(Cell::new("Total"));
-
-    table.add_row(header);
-
-    for i in 0..SUPERBLOCKS.len() {
-        let mut line = Row::empty();
-
-        line.add_cell(Cell::new(format!("{}", SUPERBLOCKS[i]).as_str()));
-        line.add_cell(Cell::new(format!("{:.3}s", build_times[i] as f64 / 1000.0).as_str()));
-        line.add_cell(Cell::new(format!("{:.2} MB", memory[i] as f64 / 1024.0 / 1024.0).as_str()));
-        line.add_cell(Cell::new(format!("{:.3}s", runtimes1[i] as f64 / 1000.0).as_str()));
-        line.add_cell(Cell::new(format!("{:.3}s", runtimes0[i] as f64 / 1000.0).as_str()));
-        line.add_cell(Cell::new(format!("{:.3}s", (runtimes1[i] + runtimes0[i]) as f64 / 1000.0).as_str()));
-        table.add_row(line);
+impl Benchmarker for RandomSelectBenchmark {
+    fn init_benchmark(&mut self, bitlen: usize) -> BitVector {
+        let bits = BitVector::generate_random(bitlen, 33333);
+        self.queries = generate_random_select_queries(&bits, self.nr_queries, self.seed);
+        bits
     }
 
-    table.printstd();
+    fn run_benchmark<I: RankSelectVector>(&self, bv: &I) where Self: Sized {
+        for (x, t) in &self.queries {
+            if *t {
+                bv.select1(*x);
+            } else {
+                bv.select0(*x);
+            }
+        }
+    }
 }
 
 pub fn benchmark_select_bruteforce_param(n: usize, queries: usize) {
@@ -215,17 +197,15 @@ pub fn benchmark_select_bruteforce_param(n: usize, queries: usize) {
     let mut runtimes0 = vec![0u128; N];
     let mut runtimes1 = vec![0u128; N];
 
-    let section = 1 << 20;
-    let mixed = [SectionDescription{weight0: 0.01, section_len: section, probability: 1.0},
-        SectionDescription{weight0: 0.5, section_len: section, probability: 1.0}];
-    let (string, queries) = generate_random_select(&mixed, n / section, queries);
+    let bv = BitVector::generate_random(n, 4444);
+    let queries = generate_random_select_queries(&bv, queries, 111);
 
     seq!(I in 0..10 {
         {
             const BR: usize = BRUTEFORCE[I];
 
-            let bits = BitVector::new_from_string(&string);
-            type AccelVector = FastRASBVec<Params<8192, 8192, BR>>;
+            let bits = bv.clone();
+            type AccelVector = FastRASBVec<Params<8192, 32768, BR>>;
             let bv = AccelVector::new(bits);
 
             runtimes1[I] = measure_time!({
@@ -273,35 +253,19 @@ pub fn benchmark_select_bruteforce_param(n: usize, queries: usize) {
 #[allow(dead_code)]
 pub enum AllBench {
     Random,
-    Sparse,
-    Mixed,
     Bruteforce,
 }
 
 pub fn benchmark_select_all(list: &[AllBench]) {
-    let q = 1 << 22;
-    let n = 1 << 30;
+    let q = 1 << 18;
+    let n = 1usize << 30;
 
     for l in list.iter() {
         match l {
             AllBench::Random => {
-                let random = [SectionDescription{weight0: 0.5, section_len: n, probability: 1.0}];
                 println!("{}", "Testing select with random bit vector".blue().bold());
-                benchmark_select_one(&random, 1, q);
-            },
-
-            AllBench::Sparse => {
-                let sparse = [SectionDescription{weight0: 0.01, section_len: n, probability: 1.0}];
-                println!("{}", "Testing select with sparse bit vector".blue().bold());
-                benchmark_select_one(&sparse, 1, q);
-
-            },
-            AllBench::Mixed => {
-                let section = 1 << 20;
-                let mixed = [SectionDescription{weight0: 0.01, section_len: section, probability: 1.0},
-                SectionDescription{weight0: 0.5, section_len: section, probability: 1.0}];
-                println!("{}", "Testing select with mixed bit vector".blue().bold());
-                benchmark_select_one(&mixed, n / section, q);
+                let random = RandomSelectBenchmark::new(q, 111);
+                benchmark_generic_random(n, random);
             },
             AllBench::Bruteforce => {
                 println!("{}", "Testing select bruteforce param".blue().bold());

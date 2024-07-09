@@ -273,7 +273,7 @@ mod tests {
 
 pub trait RankSelectVector {
     #[allow(dead_code)]
-    fn new(bits: BitVector) -> Self;
+    fn new(bits: BitVector) -> Self where Self: Sized;
 
     // Get the position of the i'th 1 in the bit vector
     fn select1(&self, i: usize) -> Option<usize>;

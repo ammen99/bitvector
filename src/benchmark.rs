@@ -32,10 +32,9 @@ macro_rules! measure_time {
     }
 }
 
-#[allow(dead_code)]
 pub fn benchmark_rank() {
-    const BLOCKS: [usize; 6] = [64, 256, 512, 1024, 2048, 4096];
-    const SUPERBLOCKS: [usize; 3] = [4096, 8192, 16384];
+    const BLOCKS: [usize; 9] = [64, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
+    const SUPERBLOCKS: [usize; 6] = [4096, 8192, 16384, 32768, 65536, 131072];
 
     const N: usize = BLOCKS.len();
     const M: usize = SUPERBLOCKS.len();
@@ -44,24 +43,25 @@ pub fn benchmark_rank() {
     let mut memory = vec![vec![0u128; M]; N];
     let mut runtimes = vec![vec![0u128; M]; N];
 
-    let string = tst::generate_random_bits_string(1 << 30, 1, 0.5);
-
+    let bits = BitVector::generate_random(1usize << 33, 1);
     let mut rng = Xoshiro256Plus::seed_from_u64(123);
     let mut queries = (0..(1 << 26)).collect::<Vec<_>>();
+
     queries.shuffle(&mut rng);
 
-    seq!(I in 0..6 {
-        seq!(J in 0..3 {
+    seq!(I in 0..9 {
+        seq!(J in 0..6 {
             {
                 const BLOCK_SIZE: usize = BLOCKS[I];
                 const SUPERBLOCK_SIZE: usize = SUPERBLOCKS[J];
 
                 if BLOCK_SIZE <= SUPERBLOCK_SIZE {
-                    let bits = BitVector::new_from_string(&string);
                     type AccelVector = FastRASBVec<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 10000000000>>;
                     let mut bv = AccelVector::new_empty();
+                    let bclone = bits.clone();
+
                     build_times[I][J] = measure_time!({
-                        bv.initialize_for(bits);
+                        bv.initialize_for(bclone);
                     });
 
                     memory[I][J] = bv.dynamic_usage() as u128 + std::mem::size_of::<AccelVector>() as u128;
@@ -102,9 +102,9 @@ pub fn benchmark_rank() {
                 line_run.add_cell(Cell::new("-------"));
                 line_build.add_cell(Cell::new("----------------"));
             } else {
-                line_run.add_cell(Cell::new(format!("{:.3}s", runtimes[i][j] as f64 / 1000.0).as_str()));
-                line_build.add_cell(Cell::new(format!("{:.3}s / {:.2} MB",
-                                                      build_times[i][j] as f64 / 1000.0,
+                line_run.add_cell(Cell::new(format!("{}ms", runtimes[i][j]).as_str()));
+                line_build.add_cell(Cell::new(format!("{}ms / {:.2} MB",
+                                                      build_times[i][j],
                                                       memory[i][j] as f64 / 1024.0 / 1024.0).as_str()));
             }
         }
@@ -112,6 +112,7 @@ pub fn benchmark_rank() {
         table_build.add_row(line_build);
         table_runtime.add_row(line_run);
     }
+    println!("Bit vector space: {:.2} MB", bits.dynamic_usage() as f64 / 1024.0 / 1024.0);
 
     println!("Build times:");
     table_build.printstd();

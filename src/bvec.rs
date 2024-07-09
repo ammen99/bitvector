@@ -2,6 +2,8 @@ use std::mem::size_of;
 use memuse::DynamicUsage;
 use num::Integer;
 use cfg_if::cfg_if;
+use rand::{Rng, SeedableRng};
+use rand_xoshiro::Xoshiro256Plus;
 
 use std::fs::File;
 use std::io::BufReader;
@@ -12,6 +14,7 @@ use std::iter::Iterator;
 type BitCell = u64;
 const BIT_CELL_SIZE: usize = size_of::<BitCell>() * 8;
 
+#[derive(Clone, Debug)]
 pub struct BitVector {
     bits: Vec<BitCell>,
     size: usize,
@@ -69,6 +72,20 @@ impl BitVector {
         BitVector {
             bits: v,
             size: bits.len(),
+        }
+    }
+
+    pub fn generate_random(length: usize, seed: u64) -> Self {
+        let mut rng = Xoshiro256Plus::seed_from_u64(seed);
+        let mut bits = vec![0; length.div_ceil(BIT_CELL_SIZE)];
+
+        for i in 0..bits.len() {
+            bits[i] = rng.gen_range(0..=BitCell::MAX);
+        }
+
+        BitVector {
+            bits,
+            size: length,
         }
     }
 

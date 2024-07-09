@@ -1,4 +1,4 @@
-use crate::bvec;
+use crate::bvec::{self};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256Plus;
 
@@ -72,16 +72,21 @@ pub trait ExecQueries {
     fn exec_queries<'a>(self, b: &'a impl bvec::RankSelectVector) -> impl Iterator<Item = usize> + 'a where Self: 'a;
 }
 
+pub fn exec_one_query(q: &Query, b: &impl bvec::RankSelectVector) -> usize {
+    match q {
+        Query::Access(i) => b.access(*i) as usize,
+        Query::Select1(i) => b.select1(*i).unwrap_or(usize::MAX),
+        Query::Select0(i) => b.select0(*i).unwrap_or(usize::MAX),
+        Query::Rank1(i) => b.rank(*i),
+        Query::Rank0(i) => i - b.rank(*i),
+    }
+
+}
+
 impl<'b, I: Iterator<Item = &'b Query>> ExecQueries for I {
     fn exec_queries<'a>(self, b: &'a impl bvec::RankSelectVector) -> impl Iterator<Item = usize> + 'a where I: 'a {
         self.map(|q| {
-            match q {
-                Query::Access(i) => b.access(*i) as usize,
-                Query::Select1(i) => b.select1(*i).unwrap_or(usize::MAX),
-                Query::Select0(i) => b.select0(*i).unwrap_or(usize::MAX),
-                Query::Rank1(i) => b.rank(*i),
-                Query::Rank0(i) => i - b.rank(*i),
-            }
+            exec_one_query(q, b)
         })
     }
 }

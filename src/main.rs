@@ -4,7 +4,7 @@
 #![feature(option_take_if)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
-#[allow(dead_code)]
+#![allow(dead_code)]
 
 mod bvec;
 mod tst;
@@ -41,7 +41,6 @@ fn praktikum_main() {
         let n = n_str.trim().parse::<usize>().unwrap();
 
         bv = bvec::BitVector::new_from_input(&mut file);
-        println!("bvec ready");
 
         qs = Vec::with_capacity(n);
         file.lines().map(|x| x.unwrap()).for_each(|line| {
@@ -64,8 +63,6 @@ fn praktikum_main() {
                 _ => panic!("Unknown query type encounted in the input file!")
             });
         });
-
-        println!("qs {}", qs.len());
     }
 
     let used_space;
@@ -94,7 +91,7 @@ fn praktikum_main() {
 }
 
 fn main() {
-    praktikum_main();
-    //benchmark_rank();
-    //benchmark_select_all(&[AllBench::Bruteforce]);
+    //praktikum_main();
+    benchmark_rank();
+    //benchmark_select_all(&[AllBench::Bruteforce, AllBench::Random]);
 }

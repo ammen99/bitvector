@@ -2,7 +2,10 @@
 #![feature(trait_alias)]
 #![feature(int_roundings)]
 #![feature(option_take_if)]
+#![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
+#[allow(dead_code)]
+
 mod bvec;
 mod tst;
 mod fast_bvec;

@@ -17,6 +17,8 @@ impl<const A: usize, const B: usize, const C: usize> RASBVecParameters for Param
     const BLOCK_SIZE: usize = A;
     const SUPERBLOCK_SIZE: usize = B;
     const SELECT_BRUTEFORCE: usize = C;
+    const SUPERBLOCK_BITS: usize = 48;
+    const BLOCK_BITS: usize = 16;
 }
 
 #[macro_export]

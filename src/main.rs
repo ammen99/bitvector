@@ -92,5 +92,5 @@ fn praktikum_main() {
 
 fn main() {
     //praktikum_main();
-    benchmark_select_all(&[AllBench::Random]);
+    benchmark_select_all(&[AllBench::Random, AllBench::RankGeneral, AllBench::SelectGeneral, AllBench::SelectBruteforce]);
 }

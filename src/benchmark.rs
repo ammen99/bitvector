@@ -41,7 +41,7 @@ trait Benchmarker {
 }
 
 fn benchmark_generic_random<Bench: Benchmarker>(bitlen: usize, mut b: Bench) {
-    const BLOCKS: [usize; 9] = [64, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
+    const BLOCKS: [usize; 8] = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
     const SUPERBLOCKS: [usize; 6] = [4096, 8192, 16384, 32768, 65536, 131072];
 
     const N: usize = BLOCKS.len();
@@ -52,14 +52,14 @@ fn benchmark_generic_random<Bench: Benchmarker>(bitlen: usize, mut b: Bench) {
     let mut runtimes = vec![vec![0u128; M]; N];
     let bits = b.init_benchmark(bitlen);
 
-    seq!(I in 0..9 {
+    seq!(I in 0..8 {
         seq!(J in 0..6 {
             {
                 const BLOCK_SIZE: usize = BLOCKS[I];
                 const SUPERBLOCK_SIZE: usize = SUPERBLOCKS[J];
 
                 if BLOCK_SIZE <= SUPERBLOCK_SIZE {
-                    type AccelVector = FastRASBVec<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 1>>;
+                    type AccelVector = FastRASBVec<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 24>>;
                     let mut bv = AccelVector::new_empty();
                     let bclone = bits.clone();
                     build_times[I][J] = measure_time!({
@@ -291,7 +291,7 @@ pub enum AllBench {
 
 pub fn benchmark_select_all(list: &[AllBench]) {
     let q = 1 << 23;
-    let n = 1usize << 33;
+    let n = 1usize << 34;
 
     for l in list.iter() {
         match l {

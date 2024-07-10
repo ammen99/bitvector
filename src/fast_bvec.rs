@@ -12,7 +12,7 @@ const CACHE_BLOCK_BITS: usize = std::mem::size_of::<CacheBlock>() * 8;
 pub trait RASBVecParameters {
     const BLOCK_SIZE: usize;
     const SUPERBLOCK_SIZE: usize;
-    const SELECT_BRUTEFORCE: usize = 2;
+    const MEGABLOCK_FACTOR: usize = 24;
 
     const SUPERBLOCK_BITS: usize = std::mem::size_of::<usize>() * 8;
     const BLOCK_BITS: usize = (64 - Self::SUPERBLOCK_SIZE.leading_zeros()) as usize;
@@ -118,6 +118,7 @@ struct RankSupport<Parameters: RASBVecParameters> where [CacheBlock; Parameters:
 pub struct FastRASBVec<Parameters: RASBVecParameters> where [CacheBlock; Parameters::CACHELINE_SIZE]: Sized {
     bits: BitVector,
     rank: RankSupport<Parameters>,
+    megablocks: Vec<usize>,
     count0: usize,
     count1: usize,
     pd: std::marker::PhantomData<Parameters>,
@@ -135,6 +136,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
             rank: RankSupport {
                 superblocks: vec![],
             },
+            megablocks: vec![],
             count0: 0,
             count1: 0,
             pd: std::marker::PhantomData,
@@ -142,29 +144,33 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
     }
 
     pub fn initialize_for(&mut self, bits: BitVector) {
+        self.init_rank(&bits);
         self.bits = bits;
-        let (rank, count1) = Self::init_rank(&self.bits);
-        self.rank = rank;
-        self.count0 = self.bits.size() - count1;
-        self.count1 = count1;
     }
 
     pub fn blocks_per_superblock() -> usize {
         Parameters::SUPERBLOCK_SIZE / Parameters::BLOCK_SIZE
     }
 
-    fn init_rank(bits: &BitVector) -> (RankSupport<Parameters>, usize) {
+    fn init_rank(&mut self, bits: &BitVector) {
         let n_super = bits.size().div_ceil(Parameters::SUPERBLOCK_SIZE);
 
         let mut rk = RankSupport {
             superblocks: vec![RankSuperblock::new(); n_super],
         };
 
+        let mut megablocks = vec![];
+        megablocks.reserve(n_super.div_floor(Parameters::MEGABLOCK_FACTOR));
+
         let mut total_count: Superblock = 0;
         for i in 0..n_super {
             let mut sblock_count: Block = 0;
             assert!(Block::MAX as usize >= (Self::blocks_per_superblock() - 1) * Parameters::BLOCK_SIZE,
                 "Superblock size is too big for block max type.");
+
+            if i % Parameters::MEGABLOCK_FACTOR == 0 {
+                megablocks.push(total_count);
+            }
 
             rk.superblocks[i].set_super(total_count);
             for j in 0..Self::blocks_per_superblock() {
@@ -180,7 +186,10 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
             total_count += sblock_count as usize;
         }
 
-        (rk, total_count)
+        self.count1 = total_count;
+        self.count0 = bits.size() - total_count;
+        self.rank = rk;
+        self.megablocks = megablocks;
     }
 
     fn _rank1(&self, i: usize) -> usize {
@@ -230,18 +239,27 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
             return None
         }
 
-        // Step 1: binary search over rank superblocks, so that we can find the superblock where
-        // our match should be.
-        let mut lsblock = 0usize;
-        let mut rsblock = self.rank.superblocks.len();
-        while rsblock - lsblock > Parameters::SELECT_BRUTEFORCE {
-            let mid = (lsblock + rsblock) / 2;
-            if self.value_count_before_sblock(mid, value) >= i {
-                rsblock = mid;
+        // Step 1: binary search over megablocks
+        let mut mega_l = 0usize;
+        let mut mega_r = self.megablocks.len();
+        while mega_r - mega_l > 1 {
+            let mid = (mega_l + mega_r) / 2;
+            let before = if value == 0 {
+                    mid * Parameters::MEGABLOCK_FACTOR * Parameters::SUPERBLOCK_SIZE - self.megablocks[mid]
+                }
+                else {
+                    self.megablocks[mid]
+                };
+
+            if before >= i {
+                mega_r = mid;
             } else {
-                lsblock = mid;
+                mega_l = mid;
             }
         }
+
+        let lsblock = mega_l * Parameters::MEGABLOCK_FACTOR;
+        let mut rsblock = std::cmp::min(lsblock + Parameters::MEGABLOCK_FACTOR, self.rank.superblocks.len());
 
         // Finish the search, because we do the last few blocks with manual search, benchmarks show
         // it is faster this way.
@@ -273,15 +291,9 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
 impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters> where [CacheBlock; Parameters::CACHELINE_SIZE]: Sized {
 
     fn new(bits: BitVector) -> Self {
-        let (rank, count1) = Self::init_rank(&bits);
-        let count0 = bits.size() - count1;
-        FastRASBVec::<Parameters> {
-            bits,
-            rank,
-            count1,
-            count0,
-            pd: std::marker::PhantomData,
-        }
+        let mut vec = Self::new_empty();
+        vec.initialize_for(bits);
+        vec
     }
 
     fn select1(&self, i: usize) -> Option<usize> {

@@ -16,7 +16,7 @@ pub struct Params<const A: usize, const B: usize, const C: usize = 1>;
 impl<const A: usize, const B: usize, const C: usize> RASBVecParameters for Params<A, B, C> {
     const BLOCK_SIZE: usize = A;
     const SUPERBLOCK_SIZE: usize = B;
-    const SELECT_BRUTEFORCE: usize = C;
+    const MEGABLOCK_FACTOR: usize = C;
     const SUPERBLOCK_BITS: usize = 48;
     const BLOCK_BITS: usize = 16;
 }

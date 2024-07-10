@@ -70,7 +70,7 @@ fn praktikum_main() {
     let accel_bv;
 
     let time_build = measure_time!({
-        accel_bv = fast_bvec::FastRASBVec::<Params<16384, 65536, 16>>::new(bv);
+        accel_bv = fast_bvec::FastRASBVec::<Params<4096, 32768, 16>>::new(bv);
     });
 
     let time_query = measure_time!({

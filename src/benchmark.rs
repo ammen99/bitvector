@@ -257,8 +257,8 @@ pub enum AllBench {
 }
 
 pub fn benchmark_select_all(list: &[AllBench]) {
-    let q = 1 << 18;
-    let n = 1usize << 30;
+    let q = 1 << 20;
+    let n = 1usize << 33;
 
     for l in list.iter() {
         match l {

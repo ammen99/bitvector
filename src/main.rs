@@ -92,6 +92,5 @@ fn praktikum_main() {
 
 fn main() {
     //praktikum_main();
-    //benchmark_rank();
     benchmark_select_all(&[AllBench::Random]);
 }

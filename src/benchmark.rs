@@ -1,5 +1,7 @@
 use crate::fast_bvec::*;
 use crate::bvec::*;
+use crate::tst;
+use crate::tst::ExecQueries;
 use rand::Rng;
 use seq_macro::seq;
 use prettytable::*;
@@ -250,27 +252,68 @@ pub fn benchmark_select_bruteforce_param(n: usize, queries: usize) {
     table.printstd();
 }
 
+struct RandomRankSelectBenchmark {
+    queries: Vec<tst::Query>,
+    nr_queries: usize,
+    seed: u64,
+}
+
+impl RandomRankSelectBenchmark {
+    fn new(nr_queries: usize, seed: u64) -> Self {
+        Self {
+            queries: Vec::new(),
+            nr_queries,
+            seed,
+        }
+    }
+}
+
+impl Benchmarker for RandomRankSelectBenchmark {
+    fn init_benchmark(&mut self, bitlen: usize) -> BitVector {
+        let bits = BitVector::generate_random(bitlen, 33333);
+        let ones = bits.count_ones(0, bitlen);
+        self.queries = tst::generate_random_queries(self.nr_queries, self.seed, self.nr_queries, Some(ones));
+        bits
+    }
+
+    fn run_benchmark<I: RankSelectVector>(&self, bv: &I) where Self: Sized {
+        self.queries.iter().exec_queries(bv).for_each(drop);
+    }
+}
+
 #[allow(dead_code)]
 pub enum AllBench {
     Random,
-    Bruteforce,
+    SelectBruteforce,
+    SelectGeneral,
+    RankGeneral,
 }
 
 pub fn benchmark_select_all(list: &[AllBench]) {
-    let q = 1 << 20;
+    let q = 1 << 23;
     let n = 1usize << 33;
 
     for l in list.iter() {
         match l {
             AllBench::Random => {
+                println!("{}", "Testing rank and select with general bit vector".blue().bold());
+                let bench = RandomRankSelectBenchmark::new(q, 122);
+                benchmark_generic_random(n, bench);
+            }
+            AllBench::SelectGeneral => {
                 println!("{}", "Testing select with random bit vector".blue().bold());
                 let random = RandomSelectBenchmark::new(q, 111);
                 benchmark_generic_random(n, random);
             },
-            AllBench::Bruteforce => {
+            AllBench::SelectBruteforce => {
                 println!("{}", "Testing select bruteforce param".blue().bold());
                 benchmark_select_bruteforce_param(n, q);
             }
+            AllBench::RankGeneral => {
+                println!("{}", "Testing rank with random bit vector".blue().bold());
+                benchmark_rank();
+            }
+
         }
     }
 }

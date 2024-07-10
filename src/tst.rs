@@ -51,18 +51,20 @@ pub enum Query {
     Rank0(usize),
 }
 
-pub fn generate_random_queries(nr_queries: usize, seed: u64, n: usize) -> Vec<Query> {
+pub fn generate_random_queries(nr_queries: usize, seed: u64, n: usize, count1: Option<usize>) -> Vec<Query> {
+    let full_range = 0..n;
+    let range1 = 0..count1.unwrap_or(n);
+    let range0 = 0..(n - count1.unwrap_or(0));
+
     let mut rng = Xoshiro256Plus::seed_from_u64(seed);
     (0..nr_queries).map(|_| {
         let qtype = rng.gen_range(0..5);
-        let pos = rng.gen_range(0..n as u32) as usize;
-
         match qtype {
-            0 => Query::Access(pos),
-            1 => Query::Select1(pos),
-            2 => Query::Select0(pos),
-            3 => Query::Rank1(pos),
-            4 => Query::Rank0(pos),
+            0 => Query::Access(rng.gen_range(full_range.clone())),
+            1 => Query::Select1(rng.gen_range(range1.clone())),
+            2 => Query::Select0(rng.gen_range(range0.clone())),
+            3 => Query::Rank1(rng.gen_range(full_range.clone())),
+            4 => Query::Rank0(rng.gen_range(full_range.clone())),
             _ => panic!()
         }
     }).collect()

@@ -384,7 +384,7 @@ mod tests {
         println!("{}", bits);
         let rasb = FastRASBVec::<Parameters>::new(BitVector::new_from_string(bits.as_str()));
         let slowb = BitVector::new_from_string(bits.as_str());
-        let queries = generate_random_queries(nr_queries, 1, size);
+        let queries = generate_random_queries(nr_queries, 1, size, None);
         //for q in &queries {
         //    println!("{:?}", q);
         //}

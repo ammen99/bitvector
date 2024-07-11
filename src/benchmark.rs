@@ -11,13 +11,13 @@ use rand_xoshiro::Xoshiro256Plus;
 use rand::seq::SliceRandom;
 use colored::Colorize;
 
-pub struct Params<const A: usize, const B: usize, const C: usize = 1>;
+pub struct Params<const A: usize, const B: usize, const C: usize = 1, const SUPERBITS: usize = 40>;
 
-impl<const A: usize, const B: usize, const C: usize> RASBVecParameters for Params<A, B, C> {
+impl<const A: usize, const B: usize, const C: usize, const D: usize> RASBVecParameters for Params<A, B, C, D> {
     const BLOCK_SIZE: usize = A;
     const SUPERBLOCK_SIZE: usize = B;
     const MEGABLOCK_FACTOR: usize = C;
-    const SUPERBLOCK_BITS: usize = 40;
+    const SUPERBLOCK_BITS: usize = D;
 }
 
 #[macro_export]
@@ -58,7 +58,7 @@ fn benchmark_generic_random<Bench: Benchmarker>(bitlen: usize, mut b: Bench) {
                 const SUPERBLOCK_SIZE: usize = SUPERBLOCKS[J];
 
                 if BLOCK_SIZE <= SUPERBLOCK_SIZE {
-                    type AccelVector = FastRASBVec<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 24>>;
+                    type AccelVector = FastRASBVec<Params<BLOCK_SIZE, SUPERBLOCK_SIZE, 32>>;
                     let mut bv = AccelVector::new_empty();
                     let bclone = bits.clone();
                     build_times[I][J] = measure_time!({
@@ -131,12 +131,12 @@ impl Benchmarker for RankBenchmark {
     }
 }
 
-pub fn benchmark_rank() {
-    let n = 1usize << 33;
+pub fn benchmark_rank(n: usize, q: usize) {
+    let n = n;
     let mut rng = Xoshiro256Plus::seed_from_u64(123);
 
     let mut bench = RankBenchmark {
-        queries: (0..(1 << 26)).collect::<Vec<_>>()
+        queries: (0..q).collect::<Vec<_>>()
     };
 
     bench.queries.shuffle(&mut rng);
@@ -310,7 +310,7 @@ pub fn benchmark_select_all(list: &[AllBench]) {
             }
             AllBench::RankGeneral => {
                 println!("{}", "Testing rank with random bit vector".blue().bold());
-                benchmark_rank();
+                benchmark_rank(n, q);
             }
 
         }

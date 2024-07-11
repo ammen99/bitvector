@@ -38,6 +38,7 @@ trait Benchmarker {
     fn run_benchmark<I: RankSelectVector>(&self, bv: &I) where Self: Sized;
 }
 
+// Run a benchmark with various parameters for the data structure
 fn benchmark_generic_random<Bench: Benchmarker>(bitlen: usize, mut b: Bench) {
     const BLOCKS: [usize; 8] = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
     const SUPERBLOCKS: [usize; 6] = [4096, 8192, 16384, 32768, 65536, 131072];
@@ -190,7 +191,7 @@ impl Benchmarker for RandomSelectBenchmark {
     }
 }
 
-pub fn benchmark_select_bruteforce_param(n: usize, queries: usize) {
+pub fn benchmark_select_megablock_factor(n: usize, queries: usize) {
     const BRUTEFORCE: [usize; 10] = [1, 2, 4, 8, 16, 32, 128, 256, 512, 1024];
     const N: usize = BRUTEFORCE.len();
 
@@ -224,13 +225,13 @@ pub fn benchmark_select_bruteforce_param(n: usize, queries: usize) {
                 }
             });
 
-            println!("Finished BRUTE={} run1={}ms run0={}ms", BR, runtimes1[I], runtimes0[I]);
+            println!("Finished MBF={} run1={}ms run0={}ms", BR, runtimes1[I], runtimes0[I]);
         }
     });
 
     let mut table = Table::new();
     let mut header = Row::empty();
-    header.add_cell(Cell::new("Bruteforce"));
+    header.add_cell(Cell::new("MBF"));
     header.add_cell(Cell::new("Run 1"));
     header.add_cell(Cell::new("Run 0"));
     header.add_cell(Cell::new("Total"));
@@ -305,7 +306,7 @@ pub fn benchmark_select_all(list: &[AllBench]) {
             },
             AllBench::SelectBruteforce => {
                 println!("{}", "Testing select bruteforce param".blue().bold());
-                benchmark_select_bruteforce_param(n, q);
+                benchmark_select_megablock_factor(n, q);
             }
             AllBench::RankGeneral => {
                 println!("{}", "Testing rank with random bit vector".blue().bold());

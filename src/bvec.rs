@@ -24,6 +24,7 @@ impl BitVector {
         self.size
     }
 
+    // Read a bit vector in ascii form (0101010011...) from a file until newline is found.
     pub fn new_from_input(file: &mut BufReader<File>) -> Self {
         let mut v = vec![];
         const BUF_SIZE: u64 = 1 << 26;
@@ -94,6 +95,7 @@ impl BitVector {
         return ((self.bits[i / BIT_CELL_SIZE] >> (i % BIT_CELL_SIZE)) & 1) as u32;
     }
 
+    // Count the number of set bits in [l, r), where [l, r) are indices within a single BitCell.
     fn count_ones_bit_cell(&self, b: usize, l: usize, r: usize) -> usize {
         let mut v = self.bits[b];
         if r < BIT_CELL_SIZE {
@@ -101,14 +103,6 @@ impl BitVector {
         }
         v >>= l;
         v.count_ones() as usize
-    }
-
-    fn count_x_in_bit_cell(&self, b: usize, l: usize, r: usize, x: u32) -> usize {
-        if x == 1 {
-            return self.count_ones_bit_cell(b, l, r);
-        } else {
-            return (r - l) - self.count_ones_bit_cell(b, l, r);
-        }
     }
 
     // Count the number of ones in [l, r)
@@ -149,6 +143,8 @@ impl BitVector {
         panic!("Should not be reached!");
     }
 
+    // Find the n'th set bit in the bit cell, caller must ensure that this bit is actually there.
+    // On x86, uses pdep, on others, uses a naive loop.
     fn find_nth_set_bit(&self, bit_cell: BitCell, nth: usize) -> usize {
         if BIT_CELL_SIZE != 64 {
             return self.find_nth_set_bit_slow(bit_cell, nth);
@@ -166,6 +162,16 @@ impl BitVector {
             } else {
                 self.find_nth_set_bit_slow(bit_cell, nth)
             }
+        }
+    }
+
+    // Find the number of bits with value x in [l, r) where `[l, r)` is entirely contained within
+    // BitCell with index `b`.
+    fn count_x_in_bit_cell(&self, b: usize, l: usize, r: usize, x: u32) -> usize {
+        if x == 1 {
+            return self.count_ones_bit_cell(b, l, r);
+        } else {
+            return (r - l) - self.count_ones_bit_cell(b, l, r);
         }
     }
 

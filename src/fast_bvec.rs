@@ -8,11 +8,14 @@ type Block = u32;
 type CacheBlock = u8;
 const CACHE_BLOCK_BITS: usize = std::mem::size_of::<CacheBlock>() * 8;
 
+// Parameters for the data structure (size of block size, size of superblock size, size of megablock factor)
+// see ARCHITECTURE.md before reading this file for easier reading :)
 pub trait RASBVecParameters {
     const BLOCK_SIZE: usize;
     const SUPERBLOCK_SIZE: usize;
-    const MEGABLOCK_FACTOR: usize = 24;
+    const MEGABLOCK_FACTOR: usize = 32; // how many superblocks are contained in a megablock
 
+    // Computations about how much bits we need to store in the RankSuperblock data structure.
     const SUPERBLOCK_BITS: usize = std::mem::size_of::<usize>() * 8;
     const BLOCK_BITS: usize = (64 - Self::SUPERBLOCK_SIZE.leading_zeros()) as usize;
     const CACHELINE_SIZE: usize = (Self::SUPERBLOCK_BITS + (Self::SUPERBLOCK_SIZE / Self::BLOCK_SIZE) * Self::BLOCK_BITS).div_ceil(8);
@@ -21,6 +24,14 @@ pub trait RASBVecParameters {
 #[derive(Derivative)]
 #[derivative(Clone(bound=""), Debug)]
 struct RankSuperblock<Parameters: RASBVecParameters> where [CacheBlock; Parameters::CACHELINE_SIZE]: Sized {
+    // Idea of RankSuperblock: store the value for a superblock, then immediately after it store
+    // the data for all the blocks inside the superblock. Each value has its own number of bits,
+    // which does not necessarily correspond to basic types like u32.
+    //
+    // The data is stored packed in a simple [CacheBlock] == [u8] array, and the corresponding bits are
+    // extracted with bit operations and loops every time they are needed.
+    // Benchmarks show that this significantly lowers memory usage, but does not increase runtimes
+    // by much.
     data: [CacheBlock; Parameters::CACHELINE_SIZE],
 }
 
@@ -104,6 +115,9 @@ struct RankSupport<Parameters: RASBVecParameters> where [CacheBlock; Parameters:
     superblocks: Vec<RankSuperblock<Parameters>>,
 }
 
+// The main structure. It has superblocks + blocks together in the rank support.
+// megablocks are kept separately for faster (due to cache efficiency) binary search in select
+// queries.
 pub struct FastRASBVec<Parameters: RASBVecParameters> where [CacheBlock; Parameters::CACHELINE_SIZE]: Sized {
     bits: BitVector,
     rank: RankSupport<Parameters>,
@@ -141,6 +155,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
         Parameters::SUPERBLOCK_SIZE / Parameters::BLOCK_SIZE
     }
 
+    // Compute the data needed for blocks, superblocks and megablocks.
     fn init_rank(&mut self, bits: &BitVector) {
         let n_super = bits.size().div_ceil(Parameters::SUPERBLOCK_SIZE);
 
@@ -181,6 +196,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
         self.megablocks = megablocks;
     }
 
+    // Compute a simple rank query using the superblocks and blocks.
     fn _rank1(&self, i: usize) -> usize {
         let (super_idx, super_rem) = i.div_rem(&Parameters::SUPERBLOCK_SIZE);
         let (block_idx, block_rem) = super_rem.div_rem(&Parameters::BLOCK_SIZE);
@@ -193,6 +209,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
         r
     }
 
+    // rank 0 or rank 1
     fn generic_rank(&self, i: usize, value: u32) -> usize {
         let r = self._rank1(i);
         if value == 1 {
@@ -202,14 +219,16 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
         }
     }
 
-    fn value_count_before_sblock(&self, b: usize, value: u32) -> usize {
+    // count number of bits with given `value` before superblock `b`
+    fn value_count_before_sblock(&self, sb: usize, value: u32) -> usize {
         if value == 1 {
-            self.rank.superblocks[b].superblock()
+            self.rank.superblocks[sb].superblock()
         } else {
-            b * Parameters::SUPERBLOCK_SIZE - self.rank.superblocks[b].superblock()
+            sb * Parameters::SUPERBLOCK_SIZE - self.rank.superblocks[sb].superblock()
         }
     }
 
+    // count number of bits with given `value` before block `b` in its superblock `sb`.
     fn value_count_before_block(&self, sb: usize, b: usize, value: u32) -> usize {
         if value == 1 {
             self.rank.superblocks[sb].block(b) as usize
@@ -228,7 +247,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
             return None
         }
 
-        // Step 1: binary search over megablocks
+        // Step 1: binary search over megablocks => find megablock which contains target bit
         let mut mega_l = 0usize;
         let mut mega_r = self.megablocks.len();
         while mega_r - mega_l > 1 {
@@ -247,11 +266,9 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
             }
         }
 
+        // Do a linear search within the superblocks in the megablock.
         let lsblock = mega_l * Parameters::MEGABLOCK_FACTOR;
         let mut rsblock = std::cmp::min(lsblock + Parameters::MEGABLOCK_FACTOR, self.rank.superblocks.len());
-
-        // Finish the search, because we do the last few blocks with manual search, benchmarks show
-        // it is faster this way.
         while self.value_count_before_sblock(rsblock - 1, value) >= i {
             rsblock -= 1;
         }
@@ -277,6 +294,7 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
     }
 }
 
+// Adapter for the RankSelectVector trait
 impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters> where [CacheBlock; Parameters::CACHELINE_SIZE]: Sized {
     fn new(bits: BitVector) -> Self {
         let mut vec = Self::new_empty();
@@ -308,6 +326,7 @@ impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters>
 
 }
 
+// ---------------------------------------- Unit Tests -------------------------------------------------------
 pub struct SmallRASB;
 
 impl RASBVecParameters for SmallRASB {

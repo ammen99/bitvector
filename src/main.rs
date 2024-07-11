@@ -1,7 +1,6 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(trait_alias)]
 #![feature(int_roundings)]
-#![feature(option_take_if)]
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 #![allow(dead_code)]

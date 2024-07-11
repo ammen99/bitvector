@@ -8,7 +8,7 @@ It has been implemented as an exercise part of the Advanced Data Structures cour
 This library relies on a few unstable rust features, therefore it is highly recommended to use it with latest nightly compiler.
 It has been tested to build and work with rust `1.81.0-nightly`.
 
-To run this, first select the nightly compiler:
+To run this, first select the nightly compiler using the [rust toolchain installer](https://rustup.rs/):
 
 ```
 rustup default nightly

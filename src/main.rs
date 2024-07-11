@@ -4,6 +4,9 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 #![allow(dead_code)]
+#![allow(stable_features)]
+#![feature(option_take_if)]
+
 
 mod bvec;
 mod tst;

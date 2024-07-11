@@ -1,7 +1,6 @@
 use num::Integer;
 
 use crate::bvec::*;
-use memuse::DynamicUsage;
 use derivative::Derivative;
 
 type Superblock = usize;
@@ -98,16 +97,6 @@ impl<Parameters: RASBVecParameters> RankSuperblock<Parameters> where [CacheBlock
     fn set_block(&mut self, i: usize, value: Block) {
         let start = Parameters::SUPERBLOCK_BITS + i * Parameters::BLOCK_BITS;
         self.write_bits(start, start + Parameters::BLOCK_BITS, value as u64);
-    }
-}
-
-impl<Parameters: RASBVecParameters> DynamicUsage for RankSuperblock<Parameters> where [CacheBlock; Parameters::CACHELINE_SIZE]: Sized {
-    fn dynamic_usage(&self) -> usize {
-        0
-    }
-
-    fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) {
-        (self.dynamic_usage(), None)
     }
 }
 
@@ -289,7 +278,6 @@ impl<Parameters: RASBVecParameters> FastRASBVec<Parameters> where [CacheBlock; P
 }
 
 impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters> where [CacheBlock; Parameters::CACHELINE_SIZE]: Sized {
-
     fn new(bits: BitVector) -> Self {
         let mut vec = Self::new_empty();
         vec.initialize_for(bits);
@@ -311,16 +299,13 @@ impl<Parameters: RASBVecParameters> RankSelectVector for FastRASBVec<Parameters>
     fn access(&self, i: usize) -> u32 {
         self.bits.access(i)
     }
-}
 
-impl<Parameters: RASBVecParameters> DynamicUsage for FastRASBVec<Parameters> where [CacheBlock; Parameters::CACHELINE_SIZE]: Sized {
-    fn dynamic_usage(&self) -> usize {
-        self.rank.superblocks.dynamic_usage()
+    fn get_memory_usage(&self) -> usize {
+        self.megablocks.len() * std::mem::size_of::<usize>() +
+            self.rank.superblocks.len() * std::mem::size_of::<RankSuperblock<Parameters>>()
     }
 
-    fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) {
-        (self.dynamic_usage(), Some(self.dynamic_usage()))
-    }
+
 }
 
 pub struct SmallRASB;

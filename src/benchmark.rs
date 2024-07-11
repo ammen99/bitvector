@@ -5,7 +5,6 @@ use crate::tst::ExecQueries;
 use rand::Rng;
 use seq_macro::seq;
 use prettytable::*;
-use memuse::DynamicUsage;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256Plus;
 use rand::seq::SliceRandom;
@@ -65,7 +64,7 @@ fn benchmark_generic_random<Bench: Benchmarker>(bitlen: usize, mut b: Bench) {
                         bv.initialize_for(bclone);
                     });
 
-                    memory[I][J] = bv.dynamic_usage() as u128 + std::mem::size_of::<AccelVector>() as u128;
+                    memory[I][J] = bv.get_memory_usage() as u128 + std::mem::size_of::<AccelVector>() as u128;
                     runtimes[I][J] = measure_time!({
                         b.run_benchmark(&bv);
                     });
@@ -109,7 +108,7 @@ fn benchmark_generic_random<Bench: Benchmarker>(bitlen: usize, mut b: Bench) {
         table_build.add_row(line_build);
         table_runtime.add_row(line_run);
     }
-    println!("Bit vector space: {:.2} MB", bits.dynamic_usage() as f64 / 1024.0 / 1024.0);
+    println!("Bit vector space: {:.2} MB", bits.get_memory_usage() as f64 / 1024.0 / 1024.0);
 
     println!("Build times:");
     table_build.printstd();

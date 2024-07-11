@@ -1,5 +1,4 @@
 use std::mem::size_of;
-use memuse::DynamicUsage;
 use num::Integer;
 use cfg_if::cfg_if;
 use rand::{Rng, SeedableRng};
@@ -286,6 +285,9 @@ pub trait RankSelectVector {
 
     // Return the value of the ith bit
     fn access(&self, i: usize) -> u32;
+
+    // Get the memory usage for the bit vector
+    fn get_memory_usage(&self) -> usize;
 }
 
 impl RankSelectVector for BitVector {
@@ -315,15 +317,9 @@ impl RankSelectVector for BitVector {
     fn access(&self, i: usize) -> u32 {
         self.get_nth(i)
     }
-}
 
-impl DynamicUsage for BitVector {
-    fn dynamic_usage(&self) -> usize {
-        self.bits.dynamic_usage()
-    }
-
-    fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) {
-        self.bits.dynamic_usage_bounds()
+    fn get_memory_usage(&self) -> usize {
+        return self.bits.len() * std::mem::size_of::<BitCell>();
     }
 }
 

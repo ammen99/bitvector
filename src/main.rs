@@ -11,7 +11,6 @@ mod tst;
 mod fast_bvec;
 mod benchmark;
 
-use memuse::DynamicUsage;
 use tst::Query;
 
 use crate::benchmark::*;
@@ -73,7 +72,7 @@ fn praktikum_main() {
     });
 
     let time_query = measure_time!({
-        used_space = accel_bv.dynamic_usage();
+        used_space = accel_bv.get_memory_usage();
         for (i, q) in qs.iter().exec_queries(&accel_bv).enumerate() {
             answers[i] = q;
         };
